@@ -20,7 +20,21 @@
 	import { Github } from "$lib/components/icons/index.js";
 	import { onMount } from "svelte";
 
-	let { data }: { data: { projects: any[]; boards: any[]; github: { hasToken: boolean } } } = $props();
+	let {
+		data
+	}: {
+		data: {
+			projects: any[];
+			boards: any[];
+			github: {
+				hasToken: boolean;
+				tokenConfigured?: boolean;
+				quotaPerHour?: number;
+				coolingUntil?: string | null;
+				cachedRequests?: number;
+			};
+		};
+	} = $props();
 
 	// ── 选中项目 ──
 	let slug = $state<string>(data.projects[0]?.slug ?? "");
@@ -295,6 +309,20 @@
 			<Github class="size-3.5" />
 			{data.github.hasToken ? "GitHub 已授权" : "GitHub 匿名"}
 		</span>
+		<!-- 冷却提示：被限流后客户端会「闭嘴」到 GitHub 给的恢复时刻。
+		     不显示的话，用户看到同步失败只会一直重试，而每次重试都不会真的发出请求。 -->
+		{#if data.github.coolingUntil}
+			<span
+				class="inline-flex items-center gap-1.5 rounded-md border border-rose-500/40 px-2.5 py-1 text-xs text-rose-600 dark:text-rose-400"
+				title="已触发 GitHub 限流，期间不再发起请求以免继续消耗配额"
+			>
+				配额冷却至 {data.github.coolingUntil}
+			</span>
+		{:else if data.github.quotaPerHour}
+			<span class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs text-muted-foreground" title="GitHub API 每小时请求上限">
+				配额 {data.github.quotaPerHour}/时
+			</span>
+		{/if}
 		<Button size="sm" variant="outline" disabled={busy} onclick={testGithub}>
 			<Wifi class="size-3.5 mr-1" />测试连接
 		</Button>

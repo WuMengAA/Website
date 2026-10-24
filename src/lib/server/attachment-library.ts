@@ -9,9 +9,9 @@
  * 函数名里带 `admin` 就是给人的警示牌。
  *
  * ## 数据流向
- *   上传 → 图片管线（缩/水印/编码）→ 上传 R2 → 写 attachments 元数据
- *   删除 → 删 R2 对象（含 original_key 那份）→ 删行
- * 元数据（表）是真源；R2 里的对象丢了可以重传，元数据错了文件就"人间蒸发"，
+ *   上传 → 图片管线（缩/水印/编码）→ 写本地存储 → 写 attachments 元数据
+ *   删除 → 删存储对象（含 original_key 那份）→ 删行
+ * 元数据（表）是真源；存储里的对象丢了可以重传，元数据错了文件就"人间蒸发"，
  * 所以**先落元数据再删对象**的顺序不能倒。
  */
 import crypto from "node:crypto";
@@ -19,7 +19,7 @@ import { getDb, nowIso } from "./db.js";
 import { getUsers } from "./auth.js";
 import { xpToLevel } from "../permissions.js";
 import { quotaBytes } from "../storage-quota.js";
-import { putObject, deleteObject, publicUrlForKey } from "./storage/r2.js";
+import { putObject, deleteObject, publicUrlForKey } from "./storage/local.js";
 import { processImage, probeImage, type TargetFormat } from "./image-pipeline.js";
 
 const MB = 1024 * 1024;
@@ -180,7 +180,7 @@ export async function renameFolder(userId: number, folderId: string, name: strin
 		.run((name || "").trim().slice(0, 60) || "未命名", nowIso(), folderId, userId);
 }
 
-/** 删除文件夹：子文件夹与里面所有文件一并删除（R2 对象也会一起清）。 */
+/** 删除文件夹：子文件夹与里面所有文件一并删除（存储对象也会一起清）。 */
 export async function deleteFolderDeep(userId: number, folderId: string): Promise<number> {
 	const db = getDb();
 	const all = await db
@@ -223,7 +223,7 @@ interface FileRow {
 	id: string;
 	folder_id: string | null;
 	filename: string;
-	/** R2 对象键。删文件时靠它定位，也是表里唯一"文件在哪"的依据。 */
+	/** 存储对象键。删文件时靠它定位，也是表里唯一"文件在哪"的依据。 */
 	storage_key: string;
 	url: string;
 	mime: string;
@@ -477,7 +477,7 @@ function extOf(name: string): string {
 	return m ? m[1].toLowerCase() : "";
 }
 
-/** 文件名净化：去掉路径分隔符与控制字符，防止 R2 键与展示名出现歧义。 */
+/** 文件名净化：去掉路径分隔符与控制字符，防止存储键与展示名出现歧义。 */
 function safeFilename(name: string): string {
 	const base = (name || "attachment").split(/[\\/]/).pop() || "attachment";
 	return base.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 120) || "attachment";
@@ -550,9 +550,9 @@ export async function recompressFile(
 		| undefined;
 	if (!row) throw new Error("图片不存在或无权操作");
 
-	// 要重压就得先把当前产物（或原图）取回来；这里直接从 R2 拉最新字节，
+	// 要重压就得先把当前产物（或原图）取回来；这里直接从本地存储读最新字节，
 	// 避免"磁盘上是什么"和"表里记的是什么"打架。
-	const { getObject } = await import("./storage/r2.js");
+	const { getObject } = await import("./storage/local.js");
 	const cur = await getObject(row.storage_key);
 	if (!cur) throw new Error("原文件已不在存储中，请重新上传");
 
@@ -580,7 +580,7 @@ export async function recompressFile(
 		const keepExt = extOf(row.storage_key) || res.ext;
 		const keepKey = `${baseKey}.orig.${keepExt}`;
 		await putObject(keepKey, cur.body as unknown as Uint8Array, row.mime);
-		// 顶替下来的旧原图已经没人引用了，留着就是孤儿对象：占着 R2 空间却不计入配额，
+		// 顶替下来的旧原图已经没人引用了，留着就是孤儿对象：占着磁盘空间却不计入配额，
 		// 用户永远也删不掉它。所以这里必须一起清掉。
 		if (row.original_key && row.original_key !== keepKey) await safeDeleteObject(row.original_key);
 		originalKey = keepKey;
@@ -624,7 +624,7 @@ export async function restoreOriginal(userId: number, id: string): Promise<Recom
 		| undefined;
 	if (!row || !row.original_key) throw new Error("这个附件没有留存原图");
 
-	const { getObject } = await import("./storage/r2.js");
+	const { getObject } = await import("./storage/local.js");
 	const orig = await getObject(row.original_key);
 	if (!orig) throw new Error("原图副本已失效，无法还原");
 
@@ -651,7 +651,7 @@ export async function restoreOriginal(userId: number, id: string): Promise<Recom
 	};
 }
 
-// 外链统一由 r2.ts 的 publicUrlForKey 生成——key 前缀规则只在那一个地方定义，
+// 外链统一由 local.ts 的 publicUrlForKey 生成——key 前缀规则只在那一个地方定义，
 // 想换域名/换前缀只改环境变量即可，这里绝不能自己拼字符串。
 function publicUrlFor(key: string): string {
 	return publicUrlForKey(key);

@@ -12,15 +12,15 @@
  * 为了一个离线脚本去动全工程的 import 写法，是这个工程最不该做的那种改动。
  *
  * ── 为什么不在脚本里复制一份签名实现 ──────────────────────────────────────────
- * 备份脚本需要往 R2 / B2 上传。R2 那套 SigV4 已经有一个经过线上验证的实现
- * （src/lib/server/storage/r2.ts）。若在此处复制第二份，将来修签名 bug 就要改两处，
+ * 备份脚本需要往 B2（或任何 S3 兼容端点）上传。签名实现集中在
+ * src/lib/server/storage/s3-compat.ts，若在此处复制第二份，将来修签名 bug 就要改两处，
  * 而漏改一处的表现是"备份时不时成功时不时失败" —— 一种最难排查的失败形态。
  * 宁可多一层钩子，也不要两套真相。
  *
  * 用法（脚本内部自己注册，调用方无需任何额外参数）：
  *   import { register } from "node:module";
  *   register("./ts-resolver.mjs", import.meta.url);
- *   const { putObject } = await import("../src/lib/server/storage/r2.ts");
+ *   const { s3Put } = await import("../src/lib/server/storage/s3-compat.ts");
  */
 
 /** @param {string} specifier @param {any} context @param {any} nextResolve */

@@ -93,48 +93,62 @@
 	<meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
-<div class="flex min-h-screen items-center justify-center bg-background px-4">
-	<div class="w-full max-w-sm space-y-6">
-		<div class="flex flex-col items-center gap-2 text-center">
-			<!-- 2026-10-05：星集控吉祥物（状态机+弹簧动效） -->
-			<StelarithMascot size={88} />
-			<h1 class="font-heading text-2xl font-semibold">Stelarith CMS</h1>
-			<p class="text-sm text-muted-foreground">登录管理后台</p>
+<!--
+	视觉框架对齐终末地（2026-10-24 重构）：切角面板、圆角恒 0、`//` 眉标、
+	三色条分区、单一强调色只做主按钮填充。表单逻辑一行未动 ——
+	superForm 的校验降级、returnTo 跳回、错误提示都保持原样，
+	因为这些是踩过坑才稳定的行为，不值得为换皮冒险。
+-->
+<div class="stage">
+	<div class="panel">
+		<div class="bar">
+			<span class="eyebrow">// 身份校验</span>
+			<span class="bar-line"></span>
+			<span class="tag">CMS</span>
 		</div>
 
-		<form method="POST" use:enhance class="space-y-4 rounded-xl border border-border/60 bg-card p-6">
-			<div class="space-y-2">
-				<Label for="username" class="mb-2">用户名</Label>
-				<div class="relative">
-					<UserIcon class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-					<Input id="username" name="username" bind:value={$form.username} placeholder="用户名" class="pl-9" autocomplete="username" />
+		<div class="brand">
+			<!-- 2026-10-05：星集控吉祥物（状态机+弹簧动效） -->
+			<StelarithMascot size={72} />
+			<div class="brand-txt">
+				<h1>Stelarith CMS</h1>
+				<p>登录管理后台</p>
+			</div>
+		</div>
+
+		<div class="tri"><i></i><i></i><i></i></div>
+
+		<form method="POST" use:enhance class="form">
+			<div class="field">
+				<Label for="username">用户名</Label>
+				<div class="ctl">
+					<UserIcon class="ctl-icon" />
+					<Input id="username" name="username" bind:value={$form.username} placeholder="用户名" class="in-left" autocomplete="username" />
 				</div>
 				{#if $errors.username}
-					<p class="mt-1.5 text-sm text-destructive">{$errors.username.join(" ")}</p>
+					<p class="ferr">{$errors.username.join(" ")}</p>
 				{/if}
 			</div>
 
-			<div class="space-y-2">
-				<Label for="password" class="mb-2">密码</Label>
-				<div class="relative">
-					<Input id="password" name="password" type={showPwd ? "text" : "password"} bind:value={$form.password} placeholder="密码" class="pr-10" autocomplete="current-password" />
-					<button type="button" onclick={() => (showPwd = !showPwd)} class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+			<div class="field">
+				<Label for="password">密码</Label>
+				<div class="ctl">
+					<Input id="password" name="password" type={showPwd ? "text" : "password"} bind:value={$form.password} placeholder="密码" class="in-right" autocomplete="current-password" />
+					<button type="button" class="ctl-btn" onclick={() => (showPwd = !showPwd)} aria-label={showPwd ? "隐藏密码" : "显示密码"}>
 						{#if showPwd}
-							<EyeOff class="h-4 w-4" />
+							<EyeOff class="ctl-icon" />
 						{:else}
-							<Eye class="h-4 w-4" />
+							<Eye class="ctl-icon" />
 						{/if}
 					</button>
 				</div>
 				{#if $errors.password}
-					<p class="mt-1.5 text-sm text-destructive">{$errors.password.join(" ")}</p>
+					<p class="ferr">{$errors.password.join(" ")}</p>
 				{/if}
 			</div>
 
 			{#if $message}
-				<p class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-center text-sm text-destructive">
-					{$message}
-				</p>
+				<p class="msg">{$message}</p>
 			{/if}
 
 			<!--
@@ -142,17 +156,228 @@
 				缺省时按钮不会触发表单提交，点击「登录」将毫无反应（既不请求也不跳转）。
 				表单内有两个输入框，浏览器也不会做隐式提交，所以这是唯一的提交入口。
 			-->
-			<Button type="submit" class="w-full" disabled={$submitting}>
-				<LogIn class="h-4 w-4 mr-2" />
-				{$submitting ? "登录中..." : "登录"}
+			<Button type="submit" class="submit" disabled={$submitting}>
+				<LogIn class="btn-icon" />
+				{$submitting ? "校验中..." : "登 录"}
 			</Button>
 		</form>
 
-		<p class="text-center text-sm text-muted-foreground">
-			还没有账号？
-			<a href="/register" class="text-primary underline underline-offset-4">注册一个</a>
-		</p>
-
-		<p class="text-center text-xs text-muted-foreground">首次登录默认密码为生成值，请立即修改（或通过 ADMIN_PASSWORD 环境变量设置）</p>
+		<div class="foot">
+			<p>
+				还没有账号？
+				<a href="/register">注册一个</a>
+			</p>
+			<p class="note">首次登录默认密码为生成值，请立即修改（或通过 ADMIN_PASSWORD 环境变量设置）</p>
+		</div>
 	</div>
 </div>
+
+<style>
+	.stage {
+		min-height: 100vh;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 32px 16px;
+		background: var(--background);
+	}
+
+	/* 切角 + 圆角恒 0：终末地的基本形状语言，与站点其余终末地页面一致 */
+	.panel {
+		width: 380px;
+		max-width: 100%;
+		background: var(--card, var(--background));
+		border: 1px solid var(--border);
+		clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%);
+		padding: 20px 22px 18px;
+	}
+
+	.bar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-bottom: 18px;
+	}
+	.eyebrow {
+		font-size: 11px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--muted-foreground);
+	}
+	.bar-line {
+		flex: 1;
+		height: 1px;
+		background: var(--border);
+	}
+	.tag {
+		font-size: 10px;
+		letter-spacing: 0.1em;
+		font-variant-numeric: tabular-nums;
+		color: var(--muted-foreground);
+		border: 1px solid var(--border);
+		padding: 1px 5px;
+	}
+
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+	}
+	.brand-txt h1 {
+		font-size: 19px;
+		font-weight: 600;
+		margin: 0;
+		letter-spacing: -0.01em;
+	}
+	.brand-txt p {
+		margin: 2px 0 0;
+		font-size: 12px;
+		color: var(--muted-foreground);
+	}
+
+	.tri {
+		display: flex;
+		gap: 3px;
+		margin: 16px 0 18px;
+	}
+	.tri i {
+		display: block;
+		width: 26px;
+		height: 3px;
+		background: var(--primary);
+	}
+	.tri i:nth-child(2) {
+		opacity: 0.55;
+	}
+	.tri i:nth-child(3) {
+		opacity: 0.28;
+	}
+
+	.form {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+	.field :global(label) {
+		display: block;
+		font-size: 11px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--muted-foreground);
+		margin-bottom: 6px;
+	}
+
+	/* 输入控件：0 圆角，聚焦用描边而非发光 */
+	.ctl {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+	.ctl :global(.ctl-icon) {
+		position: absolute;
+		left: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		size: 15px;
+		width: 15px;
+		height: 15px;
+		color: var(--muted-foreground);
+		pointer-events: none;
+	}
+	.ctl :global(input) {
+		width: 100%;
+		border-radius: 0 !important;
+		border: 1px solid var(--border);
+		background: var(--background);
+		font-size: 13.5px;
+		padding-top: 9px;
+		padding-bottom: 9px;
+	}
+	.ctl :global(.in-left) {
+		padding-left: 32px !important;
+	}
+	.ctl :global(.in-right) {
+		padding-right: 36px !important;
+	}
+	.ctl :global(input:focus) {
+		outline: 1px solid var(--primary);
+		outline-offset: -1px;
+		border-color: var(--primary);
+	}
+
+	.ctl-btn {
+		position: absolute;
+		right: 8px;
+		top: 50%;
+		transform: translateY(-50%);
+		background: none;
+		border: 0;
+		padding: 4px;
+		cursor: pointer;
+		display: flex;
+		color: var(--muted-foreground);
+	}
+	.ctl-btn:hover {
+		color: var(--foreground);
+	}
+
+	.ferr {
+		margin: 6px 0 0;
+		font-size: 12px;
+		color: var(--destructive);
+	}
+	.msg {
+		margin: 0;
+		border-left: 2px solid var(--destructive);
+		background: color-mix(in srgb, var(--destructive) 10%, transparent);
+		color: var(--destructive);
+		padding: 8px 10px;
+		font-size: 12.5px;
+	}
+
+	/* 主按钮：单一强调色填充，全站登录只有一个主操作 */
+	.form :global(.submit) {
+		width: 100%;
+		border-radius: 0 !important;
+		background: var(--primary);
+		color: var(--primary-foreground);
+		border: 1px solid var(--primary);
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		padding: 10px;
+		margin-top: 2px;
+	}
+	.form :global(.submit:hover) {
+		filter: brightness(1.08);
+	}
+	.form :global(.submit:disabled) {
+		opacity: 0.6;
+	}
+	.form :global(.btn-icon) {
+		width: 15px;
+		height: 15px;
+		margin-right: 8px;
+	}
+
+	.foot {
+		margin-top: 16px;
+		border-top: 1px solid var(--border);
+		padding-top: 12px;
+		text-align: center;
+	}
+	.foot p {
+		margin: 0;
+		font-size: 12px;
+		color: var(--muted-foreground);
+	}
+	.foot a {
+		color: var(--primary);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+	.note {
+		margin-top: 8px !important;
+		font-size: 11px !important;
+		line-height: 1.6;
+	}
+</style>

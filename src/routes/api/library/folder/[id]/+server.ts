@@ -20,7 +20,7 @@ export async function PATCH(event: RequestEvent) {
 	return json({ ok: true });
 }
 
-/** 删除目录：里面所有文件与子目录一起清掉，R2 对象同步删除（不可恢复）。 */
+/** 删除目录：里面所有文件与子目录一起清掉，存储对象同步删除（不可恢复）。 */
 export async function DELETE(event: RequestEvent) {
 	const user = await sessionUser(event);
 	if (!user) return json({ error: "未登录" }, { status: 401 });

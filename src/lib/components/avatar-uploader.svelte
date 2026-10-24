@@ -6,7 +6,7 @@
 	 * 一次性把文件读成 dataURL 预览，上传失败还能原地重试，不会因为服务端一个小抖动
 	 * 就丢掉用户刚选的图。
 	 *
-	 * 上传走 /api/account/avatar（服务端压缩 + 存 R2 + 回写 users.avatar），
+	 * 上传走 /api/account/avatar（服务端压缩 + 写本地存储 + 回写 users.avatar），
 	 * 成功后回调让父组件把新 URL 回填进资料表单——避免"传完了但没保存资料"这种经典坑。
 	 */
 	import { Button } from "$lib/components/ui/button/index.js";

@@ -28,14 +28,16 @@ import {
 	listIssues,
 	issueStats
 } from "$lib/server/project-board.js";
-import { hasGithubToken, fetchRateLimit, parseRepoUrl, GithubError } from "$lib/server/github.js";
+import { hasGithubToken, githubHealth, fetchRateLimit, parseRepoUrl, GithubError } from "$lib/server/github.js";
 
 export const GET: RequestHandler = async ({ url }) => {
 	const slug = url.searchParams.get("slug");
 	if (!slug) {
 		return json({
 			boards: getBoards(),
-			github: { hasToken: hasGithubToken() }
+			// 附带同步链路体检（配额、是否在冷却、缓存条数），
+			// 让后台能直接回答「为什么同步又失败了」，而不是让人去翻服务端日志。
+			github: { hasToken: hasGithubToken(), ...githubHealth() }
 		});
 	}
 	const board = getBoard(slug);
@@ -125,12 +127,20 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		case "sync": {
 			const withReleases = !!body.withReleases;
+			// force：跳过「10 分钟内刚同步过就复用」的节流，用于后台明确想立刻重取。
+			const force = !!body.force;
 			if (body.all) {
-				const results = await syncAll({ withReleases });
+				const results = await syncAll({ withReleases, force });
 				return json({ ok: true, results });
 			}
-			const r = await syncBoard(slug, { withReleases, repoOverride: body.repo ? String(body.repo) : undefined });
-			return json({ ok: r.ok, board: r.board, error: r.error ?? null });
+			const r = await syncBoard(slug, {
+				withReleases,
+				force,
+				repoOverride: body.repo ? String(body.repo) : undefined
+			});
+			// skipped 要如实回给前端：被节流跳过却显示「同步成功」，
+			// 会让人以为数据刚刷新过，其实是十分钟前的。
+			return json({ ok: r.ok, board: r.board, error: r.error ?? null, skipped: !!r.skipped });
 		}
 
 		case "testGithub": {

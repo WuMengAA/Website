@@ -364,10 +364,22 @@ function syncFromMeta(meta: RepoMeta, commits: { buckets: Record<string, number>
  */
 export async function syncBoard(
 	slug: string,
-	opts: { withReleases?: boolean; repoOverride?: string } = {}
-): Promise<{ ok: boolean; board: ProjectBoard; error?: string }> {
+	opts: { withReleases?: boolean; repoOverride?: string; force?: boolean } = {}
+): Promise<{ ok: boolean; board: ProjectBoard; error?: string; skipped?: boolean }> {
 	const list = readAll();
 	let board = list.find((b) => b.slug === slug);
+
+	// 节流：刚成功同步过就不要再打一次 GitHub。
+	// 匿名配额只有 60/时，后台连点几次「同步」就能把它打光，之后每一次点击都变成
+	// 一次新的失败，用户只看到「一直红」，看不出那其实是被限流。
+	// 10 分钟内的重复请求直接复用上次结果；真要立刻重来，显式传 force。
+	const MIN_SYNC_INTERVAL_MS = 10 * 60 * 1000;
+	if (!opts.force && board?.sync?.at && !board.sync.error) {
+		const age = Date.now() - new Date(board.sync.at).getTime();
+		if (age < MIN_SYNC_INTERVAL_MS) {
+			return { ok: true, board, skipped: true };
+		}
+	}
 
 	// 未绑定仓库时，允许从 repoOverride 或空值推断
 	const repoRef = (opts.repoOverride ?? board?.repo ?? "").trim();
@@ -423,14 +435,14 @@ export async function syncBoard(
 }
 
 /** 批量同步（后台「全部同步」）。串行执行以避免瞬时打爆 GitHub 的二级限流。 */
-export async function syncAll(opts: { withReleases?: boolean } = {}): Promise<
-	{ slug: string; ok: boolean; error?: string }[]
+export async function syncAll(opts: { withReleases?: boolean; force?: boolean } = {}): Promise<
+	{ slug: string; ok: boolean; error?: string; skipped?: boolean }[]
 > {
-	const results: { slug: string; ok: boolean; error?: string }[] = [];
+	const results: { slug: string; ok: boolean; error?: string; skipped?: boolean }[] = [];
 	for (const b of readAll()) {
 		if (!b.repo) continue;
-		const r = await syncBoard(b.slug, opts);
-		results.push({ slug: b.slug, ok: r.ok, error: r.error });
+		const r = await syncBoard(b.slug, { withReleases: opts.withReleases, force: opts.force });
+		results.push({ slug: b.slug, ok: r.ok, error: r.error, skipped: r.skipped });
 	}
 	return results;
 }

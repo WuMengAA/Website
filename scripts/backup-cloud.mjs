@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
  * backup-cloud.mjs —— 云端周期备份：pg_dump + tar(content,uploads) → 本地 backups/cloud/<ts>/，
- * 按 BACKUP_KEEP 轮转；设了 BACKUP_OFFSITE_CMD 则对新备份目录执行异地拷贝（R2 / Openlist 二选一）。
+ * 按 BACKUP_KEEP 轮转；设了 BACKUP_OFFSITE_CMD 则对新备份目录执行异地拷贝（B2 / Openlist 二选一）。
  *
  * 设计：
  * - 零第三方依赖（node 内置 + 外部 pg_dump / tar）。
- * - R2 解耦：本脚本不内置任何云 SDK。R2 就绪（绑卡后）只需把 BACKUP_OFFSITE_CMD 配成
+ * - 云厂商解耦：本脚本不内置任何云 SDK。异地目标就绪后只需把 BACKUP_OFFSITE_CMD 配成
  *   rclone / aws / curl 命令即可，$DIR 占位符会被替换为本次备份目录。
  * - 数据根与站点一致：STELARITH_DATA_ROOT（缺省工程根），content 与 uploads 平级于此。
  *
@@ -59,7 +59,7 @@ if (targets.length) {
 	log("未找到 content/uploads，跳过数据打包。");
 }
 
-// ③ 异地拷贝（可选）：R2 / Openlist 由外部命令承担，$DIR 占位
+// ③ 异地拷贝（可选）：B2 / Openlist 由外部命令承担，$DIR 占位
 if (OFFSITE_CMD) {
 	const cmd = OFFSITE_CMD.replace(/\$DIR/g, dir).replace(/\$\{DIR\}/g, dir);
 	log(`异地拷贝：${cmd}`);
@@ -71,7 +71,7 @@ if (OFFSITE_CMD) {
 		log(`异地拷贝失败（保留本地备份）：${e.message}`);
 	}
 } else {
-	log("未设 BACKUP_OFFSITE_CMD，仅本地保留（R2 就绪后配置即可异地）。");
+	log("未设 BACKUP_OFFSITE_CMD，仅本地保留（配了 BACKUP_OFFSITE_CMD 即可异地）。");
 }
 
 // ④ 轮转：保留最近 KEEP 份

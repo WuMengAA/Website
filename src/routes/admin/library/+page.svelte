@@ -31,7 +31,7 @@
 	}
 
 	async function purge(r: Row) {
-		if (!(await confirmDelete(`清空「${r.displayName}」的全部附件`, `将从 R2 存储中删除全部 ${r.files} 个文件，不可恢复。`))) return;
+		if (!(await confirmDelete(`清空「${r.displayName}」的全部附件`, `将从本地存储中删除全部 ${r.files} 个文件，不可恢复。`))) return;
 		busy = r.userId;
 		const res = await fetch(`/api/admin/library/purge`, {
 			method: "POST",
@@ -50,7 +50,7 @@
 		<HardDrive class="size-5 text-primary" />
 		<h1 class="font-heading text-xl font-semibold">附件库 / 图床 管理</h1>
 		<Badge variant={data.configured ? "default" : "destructive"}>
-			{data.configured ? "Cloudflare R2 已接入" : "R2 未配置"}
+			{data.configured ? "本地存储" : "存储未配置"}
 		</Badge>
 		<span class="ml-auto text-sm text-muted-foreground">
 			总占用 {formatBytes(totalUsed)} / 配额合计 {formatBytes(totalQuota)}

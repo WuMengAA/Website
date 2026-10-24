@@ -2,7 +2,7 @@
  * POST /api/account/avatar —— 上传头像。
  *
  * 与「在设置里填一个图片 URL」的区别：这里真正处理文件（按 avif/webp 压缩、
- * 按 maxEdge 缩放、可选右下角水印），存进同一个 R2 桶的 avatar/ 前缀下，
+ * 按 maxEdge 缩放、可选右下角水印），存进 uploads/ 的 avatar/ 前缀下，
  * 把返回的绝对 URL 写进 users.avatar。
  *
  * 老写法（手填 URL）仍然可用——它跟上传是并存的两条路，只是上传更省事也更省空间。
@@ -13,7 +13,7 @@ import { updateProfile } from "$lib/server/auth.js";
 import { sessionUser } from "$lib/server/session.js";
 import { recordActivity } from "$lib/server/activity.js";
 import { saveUpload, MAX_AVATAR_BYTES, QuotaExceededError } from "$lib/server/attachment-library.js";
-import { r2Configured, StorageNotConfiguredError } from "$lib/server/storage/r2.js";
+import { storageConfigured, StorageNotConfiguredError } from "$lib/server/storage/local.js";
 
 const ALLOWED = /^image\/(jpeg|png|webp|avif|gif)$/;
 

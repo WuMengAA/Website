@@ -78,8 +78,28 @@ function headers(): Record<string, string> {
 	return h;
 }
 
-async function gh(pathOrUrl: string): Promise<{ data: any; headers: Headers }> {
-	const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${API}${pathOrUrl}`;
+// ── 三层防护：缓存 / 单飞 / 熔断 ────────────────────────────────────────────
+// 为什么要这三样（2026-10-24 检修时补上）：
+// 未配 GITHUB_TOKEN 时匿名配额只有 **60 次/小时**，而同步一个仓库就要发 2～3 个请求
+// （元数据 + 提交分页 + 可选的发行列表）。后台多点几次「同步」、或同一时刻来了两个访客，
+// 配额就见底了 —— 之后的每一次点击都变成一次新的失败，用户看到的是「同步一直红」，
+// 却不知道这只是被限流了。
+//
+// ① 缓存：GET 结果按 URL 记 5 分钟。仓库元数据与提交活跃度本就是慢变量，
+//    5 分钟内重复读没有意义，却实实在在消耗配额。
+// ② 单飞：同一 URL 的并发请求合并成一个，后来的复用前者的 Promise。
+//    没有它，页面上一个组件读 repo、另一个读 releases，同一份数据会被取两遍。
+// ③ 熔断：真的被限流后，按 GitHub 给的 reset 时间闭嘴，期间不再发请求，
+//    直接抛「冷却中」。这比让每个请求都撞一次 403 要好：既省下重试的开销，
+//    又让错误信息保持稳定（"冷却到 14:30"，而不是每次都说"稍后"）。
+
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const cache = new Map<string, { at: number; data: any }>();
+const inflight = new Map<string, Promise<{ data: any; headers: Headers }>>();
+let circuitOpenUntil = 0;
+
+/** 真正发一次请求。成功写缓存；被限流则拉起熔断。 */
+async function ghFetch(url: string): Promise<{ data: any; headers: Headers }> {
 	let res: Response;
 	try {
 		res = await fetch(url, { headers: headers() });
@@ -92,7 +112,11 @@ async function gh(pathOrUrl: string): Promise<{ data: any; headers: Headers }> {
 		if (res.status === 403 || res.status === 429) {
 			const remaining = res.headers.get("x-ratelimit-remaining");
 			if (remaining === "0") {
-				const resetAt = reset ? new Date(Number(reset) * 1000).toLocaleString("zh-CN") : "稍后";
+				// 熔断到 GitHub 告知的恢复时刻；它没给就按 15 分钟算，避免永久封死。
+				circuitOpenUntil = reset
+					? Number(reset) * 1000
+					: Date.now() + 15 * 60 * 1000;
+				const resetAt = new Date(circuitOpenUntil).toLocaleString("zh-CN");
 				throw new GithubError(
 					`GitHub API 配额已用尽（${hasGithubToken() ? "已认证 5000/时" : "匿名仅 60/时，建议配置 GITHUB_TOKEN"}），将于 ${resetAt} 恢复`,
 					res.status,
@@ -104,7 +128,63 @@ async function gh(pathOrUrl: string): Promise<{ data: any; headers: Headers }> {
 		throw new GithubError(`GitHub 返回 ${res.status}`, res.status, reset);
 	}
 	const data = await res.json();
+	cache.set(url, { at: Date.now(), data });
 	return { data, headers: res.headers };
+}
+
+async function gh(pathOrUrl: string): Promise<{ data: any; headers: Headers }> {
+	const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${API}${pathOrUrl}`;
+
+	// ① 熔断期内不再打扰 GitHub
+	if (Date.now() < circuitOpenUntil) {
+		throw new GithubError(
+			`GitHub 配额冷却中，${new Date(circuitOpenUntil).toLocaleString("zh-CN")} 后自动恢复（期间不再发起请求）`,
+			429,
+			String(Math.floor(circuitOpenUntil / 1000))
+		);
+	}
+
+	// ② 缓存命中
+	const hit = cache.get(url);
+	if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+		return { data: hit.data, headers: new Headers() };
+	}
+
+	// ③ 单飞：同 URL 并发只发一次
+	const pending = inflight.get(url);
+	if (pending) return pending;
+
+	const p = ghFetch(url);
+	inflight.set(url, p);
+	try {
+		return await p;
+	} finally {
+		inflight.delete(url);
+	}
+}
+
+/**
+ * 同步链路体检 —— 给后台「仓库同步」页直接显示，免得排查时靠猜。
+ * 重点回答三个问题：配额够不够、现在是不是在冷却、有没有缓存可退。
+ */
+export function githubHealth(): {
+	tokenConfigured: boolean;
+	quotaPerHour: number;
+	coolingUntil: string | null;
+	cachedRequests: number;
+} {
+	return {
+		tokenConfigured: hasGithubToken(),
+		quotaPerHour: hasGithubToken() ? 5000 : 60,
+		coolingUntil: Date.now() < circuitOpenUntil ? new Date(circuitOpenUntil).toLocaleString("zh-CN") : null,
+		cachedRequests: cache.size
+	};
+}
+
+/** 清空缓存与熔断（后台「强制刷新」用；正常路径不需要调）。 */
+export function resetGithubCache(): void {
+	cache.clear();
+	circuitOpenUntil = 0;
 }
 
 /**

@@ -464,8 +464,8 @@ CREATE INDEX IF NOT EXISTS idx_task_state ON device_tasks(state, created_at);
 -- 设计铁律：
 --   1) 一切文件都带 owner_id，**每一次读写都必须按 owner 过滤**——隔离是靠查询条件保证的，
 --      不是靠"约定"；后台跨账号管理是唯一例外，且必须显式走管理员路径（admin/library）。
---   2) 对象实体在 Cloudflare R2（见 lib/server/storage/r2.ts），表只存元数据 + 存储键。
---      表是元数据真源，R2 里的对象可以重建、可以换域名，元数据丢了才真丢。
+--   2) 对象实体在本地磁盘 uploads/（见 lib/server/storage/local.ts），表只存元数据 + 存储键。
+--      表是元数据真源，存储里的对象可以重建，元数据丢了才真丢。
 --   3) 文件夹可无限层嵌套（parent_id 自引用）；删除文件夹时子文件夹一并带走。
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS attachment_folders (
@@ -485,7 +485,7 @@ CREATE TABLE IF NOT EXISTS attachments (
   owner_id       INTEGER NOT NULL,
   folder_id      TEXT,
   filename       TEXT    NOT NULL,
-  storage_key    TEXT    NOT NULL,   -- R2 内的对象键（也是本文件在存储里的唯一坐标）
+  storage_key    TEXT    NOT NULL,   -- 存储内的对象键（也是本文件在存储里的唯一坐标）
   url            TEXT    NOT NULL,   -- 可公开访问的外链
   mime           TEXT    NOT NULL DEFAULT 'application/octet-stream',
   bytes          INTEGER NOT NULL DEFAULT 0,

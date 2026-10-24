@@ -84,7 +84,7 @@
 			const d = await res.json();
 			if (!res.ok) throw new Error(d.error || "加载失败");
 			files = d.files; folders = d.folders; usage = d.usage;
-			storageConfigured = d.storage.provider === "cloudflare-r2";
+			storageConfigured = d.storage.provider === "local-disk";
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : String(e));
 		} finally {
@@ -280,7 +280,7 @@
 	}
 
 	async function remove(f: File) {
-		if (!(await confirmDelete(`删除「${f.filename}」`, "文件会从 Cloudflare R2 存储中移除，不可恢复。"))) return;
+		if (!(await confirmDelete(`删除「${f.filename}」`, "文件会从本地存储中移除，不可恢复。"))) return;
 		const res = await fetch(`/api/library/${f.id}`, { method: "DELETE" });
 		if (!res.ok) return toast.error("删除失败");
 		files = files.filter((x) => x.id !== f.id);
@@ -308,7 +308,7 @@
 			<h1 class="font-heading text-xl font-semibold">我的附件库</h1>
 			<Badge variant="outline">Lv.{usage.level}</Badge>
 			<Badge variant={storageConfigured ? "default" : "destructive"}>
-				{storageConfigured ? "Cloudflare R2" : "存储未配置"}
+				{storageConfigured ? "本地存储" : "存储未配置"}
 			</Badge>
 			<span class="ml-auto text-sm text-muted-foreground">
 				{formatBytes(usage.usedBytes)} / {formatBytes(usage.quotaBytes)}
@@ -326,21 +326,9 @@
 			· 容量随经验等级非线性上涨（Lv.1 100M → Lv.6 封顶 1000M）
 		</p>
 
-		{#if !storageConfigured}
-			<div class="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
-				<AlertTriangle class="mt-0.5 size-4 shrink-0 text-amber-500" />
-				<div class="space-y-1">
-					<p class="font-medium text-amber-600 dark:text-amber-400">附件库需要 Cloudflare R2，目前还没配上</p>
-					<p>在项目根目录 .env 里补全以下四项，重启服务后本页即可使用（只配这一处，不用改代码）：</p>
-					<pre class="overflow-x-auto rounded bg-muted/60 p-2 text-[11px]">R2_ACCOUNT_ID=…
-R2_BUCKET=…
-R2_ACCESS_KEY_ID=…
-R2_SECRET_ACCESS_KEY=…
-# 可选：绑定自定义域名后外链更好看
-R2_PUBLIC_URL=https://cdn.example.com</pre>
-				</div>
-			</div>
-		{/if}
+		<!-- 2026-10-24：原先这里有一段「请补全 R2_* 才能用」的引导。
+		     存储后端改为本地磁盘后（见 storage/local.ts）恒可用，
+		     那段引导会变成一条永远不显示、却仍在教人配 R2 的误导性文案，已移除。 -->
 	</div>
 
 	<div class="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
@@ -518,7 +506,7 @@ R2_PUBLIC_URL=https://cdn.example.com</pre>
 				<summary class="cursor-pointer font-medium text-foreground">图床用法</summary>
 				<ul class="mt-2 space-y-1">
 					<li>· 任何图片都可以直接复制外链，贴到评论区、文档、别处都能显示。</li>
-					<li>· 图片外链默认走 R2 的公网地址；绑了 <code>R2_PUBLIC_URL</code> 自定义域名就自动换成你的域名。</li>
+					<li>· 图片外链即站内 <code>/uploads/</code> 地址，无外部依赖。</li>
 					<li>· 「一键压缩」用 AVIF/WebP 重压一遍，原图会单独留一份，随时用 ↺ 还原。</li>
 					<li>· 别人只能拿到你的文件链接，看不到列表——列表和文件元数据都只属于你自己。</li>
 				</ul>

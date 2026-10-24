@@ -18,7 +18,7 @@ import {
 	QuotaExceededError,
 	type ListFilesOptions
 } from "$lib/server/attachment-library.js";
-import { r2Configured, StorageNotConfiguredError } from "$lib/server/storage/r2.js";
+import { storageProvider, StorageNotConfiguredError } from "$lib/server/storage/local.js";
 
 function bad(msg: string, status = 400) {
 	return json({ error: msg }, { status });
@@ -45,9 +45,9 @@ export async function GET(event: RequestEvent) {
 			q: q.trim() || undefined
 		}),
 		storage: {
-			// 只有真正配好了才让前端展示「存储：Cloudflare R2」，否则前端提示未配置。
-			// 刻意不提供本地磁盘兜底：存到哪必须只有一个答案，否则排障时根本无从下手。
-			provider: r2Configured() ? "cloudflare-r2" : "local-disk"
+			// 2026-10-24：存储后端只剩本地磁盘一个（见 storage/local.ts），
+			// provider 因此恒定，不再有「这次到底存哪了」的第二种答案。
+			provider: storageProvider()
 		}
 	});
 }

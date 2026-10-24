@@ -48,11 +48,10 @@
  *
  * ── 三份如何算"异地" ────────────────────────────────────────────────────────
  *   份 1 本机  content/backups/local/<ts>/    防误删，不防机器坏
- *   份 2 R2   <R2_PREFIX>sqlite/<ts>/         跨服务商，防本机全毁
- *   份 3 B2   <B2_PREFIX>sqlite/<ts>/         真正的异地：独立账号、独立凭证
+ *   份 2 B2   <B2_PREFIX>sqlite/<ts>/         异地：独立账号、独立凭证（2026-10-24 起不再有 R2 份）
  *
- * 份 2 与份 3 由同一台机器发起，防不了"密钥泄漏导致云上备份被一并清掉"。
- * 所以份 3 必须是不同的服务商 + 不同的密钥。缺任一份都算**不完整备份** ——
+ * 本机份与异地份由同一台机器发起，防不了"密钥泄漏导致云上备份被一并清掉"。
+ * 所以异地份必须是不同的服务商 + 不同的密钥。缺任一份都算**不完整备份** ——
  * 缺省行为是 exit 2 直接失败，而不是"能传几份传几份"。
  * （想临时跳过，显式设 `BACKUP_ALLOW_PARTIAL=1`，脚本会把它记进 latest.json，
  *   让"我今天其实只备份了 1 份"这件事留下书面证据。）
@@ -69,14 +68,16 @@ import { DatabaseSync } from "node:sqlite";
 
 // ── 复用运行时的路径真相，绝不在这里另写一套 "content" / "uploads" ────────────
 // 详见 scripts/ts-resolver.mjs：让本文件能直接 import 站内的 .ts 源码，
-// 从而复用生产在用的 r2.ts，而不是在此写第二套 S3 签名。
+// 从而复用站内源码里的路径定义，而不是在此再写一遍 "content" / "uploads"。
 import { register } from "node:module";
 register("./ts-resolver.mjs", import.meta.url);
 
 const { DATA_ROOT, CONTENT_DIR, UPLOADS_DIR, DB_FILE } = await import("../src/lib/server/paths.ts");
-const { putObject, headObject, resetR2ConfigCache, r2Configured } = await import(
-	"../src/lib/server/storage/r2.ts"
-);
+// 2026-10-24：运行时存储已不再用 R2（见 storage/local.ts），但**异地备份**仍要往
+// 另一个服务商推，否则机器一没就全没。这里改用参数化的通用 S3 兼容客户端
+// （storage/s3-compat.ts），凭证显式传入，不再靠「临时把 R2_* 环境变量替换成 B2_*」这种
+// 改全局状态的把戏 —— 那种做法一旦中途抛异常，进程里的凭证就停在半替换状态。
+const { s3Put, s3Head } = await import("../src/lib/server/storage/s3-compat.ts");
 
 // ════════════════════════════════════════════════════════════════════════════
 // 配置
@@ -137,14 +138,16 @@ function env(name, dflt = "") {
 
 // ⚠ 顺序即正确性：.env 必须在这批配置**求值之前**载入。
 // 早先这里写的是 main() 内部 `loadEnv()`，而 CFG 在模块顶层求值 ——
-// 于是 BACKUP_KEY / BACKUP_R2_PREFIX 一律读到空值，
+// 于是 BACKUP_KEY / BACKUP_PREFIX 一律读到空值，
 // 并给出"未配置 BACKUP_KEY"这种看起来像没写配置、其实是加载顺序错了的误导性提示。
 if (!process.argv.includes("--no-env")) loadEnv();
 
 const CFG = {
 	key: env("BACKUP_KEY"),
 	keyFile: env("BACKUP_KEY_FILE"), // 备选：从文件读密钥（放密码管理器挂载点时用）
-	prefix: env("BACKUP_R2_PREFIX", "backups/sqlite"),
+	// 2026-10-24 改名：BACKUP_R2_PREFIX → BACKUP_PREFIX（R2 份已移除，名字不该再提 R2）。
+	// 仍兼容读旧名，避免已部署环境改了变量名就静默换成默认前缀、备份落错地方。
+	prefix: env("BACKUP_PREFIX", env("BACKUP_R2_PREFIX", "backups/sqlite")),
 	keepDaily: Number(env("BACKUP_KEEP_DAILY", "7")),
 	keepWeekly: Number(env("BACKUP_KEEP_WEEKLY", "4")),
 	keepMonthly: Number(env("BACKUP_KEEP_MONTHLY", "12")),
@@ -160,7 +163,7 @@ function gfsKeep() {
 	};
 }
 
-// ── B2：与 R2 完全相同的 S3 协议，只是 endpoint 与凭证不同 ────────────────────
+// ── B2：S3 兼容协议，异地备份的唯一落点（2026-10-24 起不再有 R2 份）────────────
 function b2Ready() {
 	return Boolean(
 		env("B2_ACCOUNT_ID") && env("B2_BUCKET") && env("B2_ACCESS_KEY_ID") && env("B2_SECRET_ACCESS_KEY")
@@ -169,40 +172,24 @@ function b2Ready() {
 function b2Endpoint() {
 	return env("B2_ENDPOINT", `https://s3.${env("B2_REGION", "us-west-001")}.backblazeb2.com`);
 }
-/** B2 上的备份根。不配 B2_PREFIX 就跟着 BACKUP_R2_PREFIX，落在同一个桶结构下的另一处。 */
+/** B2 上的备份根。 */
 function b2Base(ts) {
 	return `${env("B2_PREFIX", CFG.prefix)}/sqlite/${ts}`;
 }
 
-/** 把 R2_* 临时替换成 B2_*，让 r2.ts 那份签名实现为 B2 服务，用完原样还原。 */
-function withB2(fn) {
-	if (!b2Ready()) return fn(true, "unconfigured");
-	const orig = {
-		R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
-		R2_BUCKET: process.env.R2_BUCKET,
-		R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
-		R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
-		R2_ENDPOINT: process.env.R2_ENDPOINT,
-		R2_REGION: process.env.R2_REGION,
-		R2_PUBLIC_URL: process.env.R2_PUBLIC_URL,
-		R2_PREFIX: process.env.R2_PREFIX,
+/**
+ * 组装 B2 的 S3 端点配置（显式传参，不改全局环境变量）。
+ * 备份只写不读公网，所以不需要 publicUrl 之类的外链字段。
+ */
+function b2Config() {
+	return {
+		endpoint: b2Endpoint(),
+		bucket: env("B2_BUCKET"),
+		accessKeyId: env("B2_ACCESS_KEY_ID"),
+		secretAccessKey: env("B2_SECRET_ACCESS_KEY"),
+		region: env("B2_REGION", "us-west-001"),
+		prefix: env("B2_PREFIX", CFG.prefix)
 	};
-	const set = (k, v) => (v === undefined ? delete process.env[k] : (process.env[k] = v));
-	try {
-		set("R2_ACCOUNT_ID", env("B2_ACCOUNT_ID"));
-		set("R2_BUCKET", env("B2_BUCKET"));
-		set("R2_ACCESS_KEY_ID", env("B2_ACCESS_KEY_ID"));
-		set("R2_SECRET_ACCESS_KEY", env("B2_SECRET_ACCESS_KEY"));
-		set("R2_ENDPOINT", b2Endpoint());
-		set("R2_REGION", env("B2_REGION", "us-west-001"));
-		set("R2_PUBLIC_URL", env("B2_PUBLIC_URL", "")); // 备份不需要外链，留空避免 publicUrlForKey() 给出不可用的 URL
-		set("R2_PREFIX", env("B2_PREFIX", CFG.prefix));
-		resetR2ConfigCache();
-		return fn(false, "b2");
-	} finally {
-		for (const k of Object.keys(orig)) set(k, orig[k]);
-		resetR2ConfigCache();
-	}
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -242,7 +229,7 @@ function resolveKey() {
 			"未配置 BACKUP_KEY（数据库备份的解密密钥）。\n" +
 				"  生成：  node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"\n" +
 				"  写入：  工程根目录 .env 的 BACKUP_KEY=<上面那串>\n" +
-				"  ⚠ 丢了它，所有历史备份都解不开。请离线抄一份，且不要和 R2/B2 的凭证放在一起。"
+				"  ⚠ 丢了它，所有历史备份都解不开。请离线抄一份，且不要和 B2 的凭证放在一起。"
 		);
 	}
 	// 容错：本站的 .env 加载器不会剥掉值两侧的引号（loadenv.cjs 的既有行为），
@@ -514,7 +501,7 @@ async function main() {
 			/* 极小概率的文件删除竞态，忽略 */
 		}
 	}
-	plan.sinks.push("local", r2Configured() ? "r2" : "(r2 未配置)", b2Ready() ? "b2" : "(b2 未配置)");
+	plan.sinks.push("local", b2Ready() ? "b2" : "(b2 未配置)");
 
 	if (args.plan) {
 		hr("计划（未执行任何写操作）");
@@ -523,7 +510,6 @@ async function main() {
 		log(`  3. 逐件分发 ${files.length} 个文件（${(plan.plainBytes / 1024).toFixed(1)} KiB，明文）`);
 		log(`  4. 目标：`);
 		log(`      本机  content/backups/local/${ts}/`);
-		log(`      R2   ${CFG.prefix}/sqlite/${ts}/   ${r2Configured() ? "" : "← R2_* 未配置"}`);
 		log(`      B2   ${b2Base(ts)}/   ${b2Ready() ? "" : "← B2_* 未配置，按纪律会直接失败"}`);
 		log(`  5. 轮转：日 ${keep.daily} / 周 ${keep.weekly} / 月 ${keep.monthly}（只删本机份）`);
 		return 0;
@@ -568,23 +554,12 @@ async function main() {
 	ok(`本机 ${localDir}（${copied} 个文件 + 密文 + 明文快照）`);
 	bytes += enc.length + plan.plainBytes;
 
-	// ④ R2
-	hr("④ 分发 · 份 2 R2");
-	const r2Base = `${CFG.prefix}/sqlite/${ts}`;
-	const r2Jobs = [[`${r2Base}/db/${ts}.db.enc`, enc, "application/octet-stream"]];
-	for (const f of files) r2Jobs.push([`${r2Base}/${f.rel}`, await fsp.readFile(f.abs), PLAIN]);
-	if (!r2Configured()) {
-		warn("R2_* 未配置，跳过份 2（本机份已落盘，数据没丢，但这一项不完整）");
-	} else {
-		for (const [k, body, ct] of r2Jobs) {
-			const r = await putObject(k, body, ct);
-			bytes += r.bytes;
-		}
-		ok(`R2 上传 ${r2Jobs.length} 个对象 → ${r2Base}/`);
-	}
-
-	// ⑤ B2
-	hr("⑤ 分发 · 份 3 B2（异地）");
+	// ④ B2（异地）
+	//    2026-10-24：原先这里还有一份「份 2 R2」。站点运行时存储已不用 R2，
+	//    备份若继续往 R2 推，等于为一个从未在用的桶保留一整套凭证与代码路径；
+	//    而且 R2 与本机同属 Cloudflare 账号，算不上真正的「异地」。
+	//    因此份 2 移除，异地份只保留 B2（独立服务商、独立账号、独立密钥）。
+	hr("④ 分发 · 份 2 B2（异地）");
 	const b2Root = b2Base(ts);
 	const b2Jobs = [[`${b2Root}/db/${ts}.db.enc`, enc, "application/octet-stream"]];
 	for (const f of files) b2Jobs.push([`${b2Root}/${f.rel}`, await fsp.readFile(f.abs), PLAIN]);
@@ -593,8 +568,8 @@ async function main() {
 	if (!b2Ready()) {
 		const msg =
 			"B2 未配置（缺 B2_ACCOUNT_ID / B2_BUCKET / B2_ACCESS_KEY_ID / B2_SECRET_ACCESS_KEY 中的任一项）。\n" +
-			"  备份不需要另一个服务商，就不叫异地 —— 份 2 和份 3 都由本机发起，机器一没就没了。\n" +
-			"  现在只有本机 + " + (r2Configured() ? "R2" : "无") + " 两份。";
+			"  备份没有第二个服务商，就不叫异地 —— 本机一没，备份跟着没。\n" +
+			"  现在只有本机这一份。";
 		if (args.allowPartial) {
 			b2Skip = true;
 			warn(msg);
@@ -603,12 +578,11 @@ async function main() {
 			fatal(msg + "\n  想跳过请在命令后加 --allow-partial —— 效果是「今天其实没有异地备份」。");
 		}
 	} else {
-		await withB2(async () => {
-			for (const [k, body, ct] of b2Jobs) {
-				const r = await putObject(k, body, ct);
-				bytes += r.bytes;
-			}
-		});
+		const cfg = b2Config();
+		for (const [k, body, ct] of b2Jobs) {
+			await s3Put(cfg, k, body, ct);
+			bytes += body.length;
+		}
 		ok(`B2 上传 ${b2Jobs.length} 个对象 → ${b2Root}/`);
 	}
 
@@ -617,7 +591,7 @@ async function main() {
 	let verifyFailed = false;
 	const verifyOne = async (label, prefix) => {
 		try {
-			const head = await withB2(async () => headObject(`${prefix}/db/${ts}.db.enc`));
+			const head = await s3Head(b2Config(), `${prefix}/db/${ts}.db.enc`);
 			if (!head) {
 				warn(`${label}: 对象不存在`);
 				verifyFailed = true;
@@ -634,7 +608,6 @@ async function main() {
 			verifyFailed = true;
 		}
 	};
-	if (r2Configured()) await verifyOne("R2", r2Base);
 	if (b2Ok) await verifyOne("B2", b2Root);
 	// 解密自验：拿密文重新走一遍 decrypt，确认密钥对了、内容没坏。
 	const back = decryptBytes(enc, key);
@@ -689,7 +662,7 @@ async function main() {
 		files: files.length,
 		integrity: probe.integrity,
 		counts: probe.counts,
-		sinks: { local: true, r2: r2Configured(), b2: b2Ok ? "ok" : b2Skip ? "skipped-by-flag" : "unconfigured" },
+		sinks: { local: true, b2: b2Ok ? "ok" : b2Skip ? "skipped-by-flag" : "unconfigured" },
 		rotation: { days: days.size, removed },
 		allowPartial: b2Skip,
 	};
@@ -701,7 +674,7 @@ async function main() {
 	hr("完成");
 	log(`  用时 ${((Date.now() - t0) / 1000).toFixed(1)}s，共写出 ${(bytes / 1024 / 1024).toFixed(2)} MiB`);
 	log(`  备份集 = ${ts}，可在 ${path.join(CFG.localRoot, ts)} 找到本机份`);
-	if (b2Skip) warn("本次缺少异地份 3（B2 未配置）。这不是一次完整的 3-2-1。");
+	if (b2Skip) warn("本次缺少异地份（B2 未配置）。这不是一次完整的 3-2-1。");
 	return 0;
 }
 

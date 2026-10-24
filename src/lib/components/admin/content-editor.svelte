@@ -8,6 +8,9 @@
 	import { Save, ArrowLeft, Bold, Italic, Strikethrough, Heading2, Quote, List, ListOrdered, ListTodo, Table, Minus, Code, SquareCode, Link as LinkIcon, Image as ImageIcon, CornerDownLeft, ChevronRight, MonitorPlay, Archive } from "@lucide/svelte";
 	import { toast } from "svelte-sonner";
 	import { page } from "$app/state";
+	import { goto } from "$app/navigation";
+	// 后台统一的确认对话框（模块级单例 + Promise API），不用原生 confirm()。
+	import { confirmDelete } from "$lib/components/admin/confirm.svelte";
 
 	let {
 		section = "posts",
@@ -45,6 +48,20 @@
 	// 移动端：编辑 / 预览页签切换（桌面 md 起双栏同显）
 	let mobileView = $state<"edit" | "preview">("edit");
 
+	// ── 未保存变更保护 ──────────────────────────────────────────────────────
+	// 编辑器最痛的失败不是保存出错，是「写了半小时，手滑点了返回/关了标签页，全没了」。
+	// 用一个基线快照比对当前值：变了就是脏，脏了就在离开前拦一道。
+	let baseline = $state("");
+	let dirty = $state(false);
+
+	function snapshot(): string {
+		return JSON.stringify([title, body, excerpt, category, tags, status, repoUrl, siteUrl]);
+	}
+	function markClean(): void {
+		baseline = snapshot();
+		dirty = false;
+	}
+
 	const apiPath = $derived("/api/" + section);
 
 	$effect(() => {
@@ -55,6 +72,34 @@
 		if (slug !== "new" && !loaded) load();
 	});
 
+	// 脏检测：基线一旦建立，任何字段变动都置脏。
+	// 注意必须读一遍 snapshot() 依赖的字段，否则 effect 不会订阅它们的变化。
+	$effect(() => {
+		const now = snapshot();
+		if (!baseline) return;
+		dirty = now !== baseline;
+	});
+
+	// 关标签页 / 刷新 / 前进后退出站点：交给浏览器原生确认。
+	// 只拦「真的要离开」这一种，站内点返回走下面的 leave()，不必弹两次。
+	$effect(() => {
+		if (!dirty) return;
+		const handler = (e: BeforeUnloadEvent) => {
+			e.preventDefault();
+			e.returnValue = "";
+		};
+		window.addEventListener("beforeunload", handler);
+		return () => window.removeEventListener("beforeunload", handler);
+	});
+
+	/** 站内离开（返回列表 / 保存后跳转）：脏了先问一句。 */
+	async function leave(): Promise<void> {
+		if (dirty && !(await confirmDelete("放弃未保存的修改？", "当前内容还没保存，离开后这些改动会丢失。"))) {
+			return;
+		}
+		await goto(backUrl);
+	}
+
 	async function load() {
 		try {
 			const res = await fetch(apiPath + "?action=get&slug=" + encodeURIComponent(slug));
@@ -64,6 +109,7 @@
 			category = item.category || ""; tags = (item.tags || []).join(", "); status = item.status || "published";
 			repoUrl = item.repoUrl || ""; siteUrl = item.siteUrl || "";
 			loaded = true;
+			markClean(); // 载入完成才算基线；载入过程本身不该被当成「用户改了东西」
 		} catch (e) { console.error(e); }
 	}
 
@@ -76,7 +122,17 @@
 	}
 
 	async function save(redirect = false) {
-		if (!title.trim() || !body.trim()) return;
+		// 原来这里是 `return` 一声不吭：点了「保存」毫无反应，
+		// 用户只会以为按钮坏了或者网络卡了，反复点却永远存不上。
+		// 校验失败必须说清楚差哪一项。
+		if (!title.trim()) {
+			toast.error("请先填写标题");
+			return;
+		}
+		if (!body.trim()) {
+			toast.error("正文不能为空");
+			return;
+		}
 		saving = true; saved = false;
 		try {
 			const tagsArr = tags.split(",").map(t => t.trim()).filter(Boolean);
@@ -89,13 +145,14 @@
 			const result = await res.json();
 			if (res.ok) {
 				savedSlug = result.slug || ""; saved = true;
+				markClean(); // 存盘后即视为干净，离开时不再拦
 				toast.success("已保存");
 				// Auto-index: refresh backend list on next visit so newly saved items appear immediately
 				localStorage.setItem("acofork_need_refresh", "1");
 				setTimeout(() => { saved = false; }, 2500);
-				if (redirect && result.slug) window.location.href = backUrl;
+				if (redirect && result.slug) await goto(backUrl);
 			} else {
-				toast.error("保存失败，请重试");
+				toast.error(result?.error || "保存失败，请重试");
 			}
 		} catch (e) { console.error(e); toast.error("保存失败，请重试"); }
 		saving = false;
@@ -106,7 +163,10 @@
 	// 但文件与版本快照保留，可在后台「归档管理」恢复。
 	async function archiveItem() {
 		if (slug === "new") return;
-		if (!confirm("归档后该内容将从列表与前台隐藏，可在后台「归档管理」中恢复。确定归档？")) return;
+		// 用后台统一的确认对话框，而不是原生 confirm()：
+		// 原生弹窗样式不受控、无法本地化文案，在全站其余处已换成统一组件后，
+		// 只有这里还是浏览器默认样式，看着像另一个网站。
+		if (!(await confirmDelete("归档这篇内容？", "归档后该内容将从列表与前台隐藏，可在后台「归档管理」中恢复。"))) return;
 		saving = true;
 		try {
 			const payload: Record<string, unknown> = { slug, title, body, status: "archived" };
@@ -114,7 +174,7 @@
 			if (res.ok) {
 				toast.success("已归档");
 				localStorage.setItem("acofork_need_refresh", "1");
-				window.location.href = backUrl;
+				await goto(backUrl);
 			} else {
 				const r = await res.json();
 				toast.error(r.error || "归档失败，请重试");
@@ -330,9 +390,10 @@
 
 
 <div class="mb-6">
-	<a href={backUrl} class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-2">
+	<!-- 返回前若没保存，先确认（leave() 内部处理），避免辛苦写的内容一笔勾销 -->
+	<button type="button" onclick={leave} class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-2">
 		<ArrowLeft class="h-4 w-4" /> 返回列表
-	</a>
+	</button>
 	<h1 class="text-2xl font-heading font-semibold">{slug === "new" ? "新建内容" : "编辑：" + title}</h1>
 </div>
 
@@ -474,7 +535,13 @@
 		<Button variant="ghost" onclick={archiveItem} disabled={saving || slug === "new"} class="text-destructive hover:text-destructive" title="归档：从列表与前台隐藏，可在后台归档管理中恢复">
 			<Archive class="h-4 w-4 mr-2" /> 归档
 		</Button>
-		{#if saved}<Badge variant="secondary">已保存</Badge>{/if}
+		{#if saved}
+			<Badge variant="secondary">已保存</Badge>
+		{:else if dirty}
+			<!-- 脏状态要看得见：否则用户以为自己存过了，
+			     直到某次误关标签页才发现改动一直没落盘。 -->
+			<Badge variant="outline" class="text-amber-600 dark:text-amber-400">未保存</Badge>
+		{/if}
 	</div>
 </div>
 

@@ -13,7 +13,7 @@ import {
 	listFolders,
 	usageOf
 } from "$lib/server/attachment-library.js";
-import { r2Configured } from "$lib/server/storage/r2.js";
+import { storageConfigured } from "$lib/server/storage/local.js";
 import { QUOTA_MIB, QUOTA_MAX_MIB } from "$lib/storage-quota.js";
 
 export const load: PageServerLoad = async ({ cookies }) => {
@@ -23,7 +23,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
 	const id = (await user).id;
 	await ensureRootFolders(id);
 
-	const configured = r2Configured();
+	const configured = storageConfigured();
 
 	return {
 		me: { username: (await user).username, displayName: (await user).displayName || (await user).username },
@@ -32,7 +32,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
 		files: listFiles(id),
 		storage: {
 			configured,
-			provider: configured ? "cloudflare-r2" : "unconfigured"
+			provider: "local-disk"
 		},
 		// 配额阶梯一次下发，前端画容量条上的刻度不用再算一遍
 		quotaCurve: (Object.keys(QUOTA_MIB) as unknown as number[])

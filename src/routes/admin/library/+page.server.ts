@@ -10,7 +10,7 @@ import type { PageServerLoad, Actions } from "./$types";
 import { sessionUser } from "$lib/server/session.js";
 import { userCan } from "$lib/permissions.js";
 import { adminUsageOverview, adminSetBonusQuota, type AdminUserUsage } from "$lib/server/attachment-library.js";
-import { r2Configured } from "$lib/server/storage/r2.js";
+import { storageConfigured } from "$lib/server/storage/local.js";
 
 export const load: PageServerLoad = async ({ cookies }) => {
 	const user = await sessionUser({ cookies });
@@ -19,7 +19,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
 
 	return {
 		rows: await adminUsageOverview(),
-		configured: r2Configured()
+		configured: storageConfigured()
 	};
 };
 

@@ -160,5 +160,28 @@ export const actions: Actions = {
 		const code = issueCode(u.id ?? -1, client_id, redirect_uri, state, probed.scope);
 		const sep = redirect_uri.includes("?") ? "&" : "?";
 		throw redirect(302, `${redirect_uri}${sep}code=${code}&state=${encodeURIComponent(state)}`);
+	},
+
+	// 用户拒绝授权（2026-10-24 补）：此前这个页面只有「授权」一个按钮，
+	// 不同意的唯一出路是关掉标签页 —— 客户端既收不到 code 也收不到 error，
+	// 只能干等到自己超时，用户则卡在原地不知道发生了什么。
+	// 按 RFC 6749 §4.1.2.1 回拨 error=access_denied，让客户端能明确区分
+	// 「用户不同意」与「网络/超时」，给出各自的后续。
+	deny: async ({ request }) => {
+		const form = await request.formData();
+		const client_id = String(form.get("client_id") ?? "");
+		const redirect_uri = String(form.get("redirect_uri") ?? "");
+		const state = String(form.get("state") ?? "");
+
+		// 回拨地址仍必须是该客户端登记过的那个：否则「拒绝」就成了一条开放重定向
+		// —— 随便塞个 redirect_uri，就能把刚登录的用户送去任意站点。
+		const probed = await inspect(client_id, redirect_uri, "");
+		if ("error" in probed) return fail(400, { error: probed.error });
+
+		const sep = redirect_uri.includes("?") ? "&" : "?";
+		throw redirect(
+			302,
+			`${redirect_uri}${sep}error=access_denied&state=${encodeURIComponent(state)}`
+		);
 	}
 };

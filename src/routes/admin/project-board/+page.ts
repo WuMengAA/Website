@@ -14,6 +14,12 @@ export const load: PageLoad = async ({ fetch }) => {
 	return {
 		projects,
 		boards: (bj.boards ?? []) as any[],
-		github: (bj.github ?? { hasToken: false }) as { hasToken: boolean }
+		github: (bj.github ?? { hasToken: false }) as {
+			hasToken: boolean;
+			tokenConfigured?: boolean;
+			quotaPerHour?: number;
+			coolingUntil?: string | null;
+			cachedRequests?: number;
+		}
 	};
 };
