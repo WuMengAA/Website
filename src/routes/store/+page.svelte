@@ -91,8 +91,8 @@
 		scene.fog = new THREE.Fog(0xeef1f4, 12, 27);
 
 		const camera = new THREE.PerspectiveCamera(42, W() / H(), 0.1, 120);
-		camera.position.set(2.6, 1.7, 9.4);
-		camera.lookAt(-0.7, 0.25, -1.4);
+		camera.position.set(2.9, 1.9, 10.4);
+		camera.lookAt(-0.8, 0.3, -1.7);
 
 		// 网格地面（coldstore 的 grid）
 		const grid = new THREE.GridHelper(60, 60, 0xaeb8c2, 0xd3d9e0);
@@ -100,9 +100,9 @@
 		scene.add(grid);
 
 		const N = data.length;
-		const STEP_X = 1.25;
-		const STEP_Y = 0.42;
-		const STEP_Z = 1.5;
+		const STEP_X = 1.6;
+		const STEP_Y = 0.5;
+		const STEP_Z = 1.75;
 		const panels: any[] = [];
 		data.forEach((it, i) => {
 			const mat = new THREE.MeshBasicMaterial({
@@ -110,7 +110,7 @@
 				transparent: true,
 				depthWrite: false
 			});
-			const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.34, 1.48), mat);
+			const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.95, 1.86), mat);
 			mesh.rotation.set(0.14, -0.38, 0);
 			mesh.userData.index = i;
 			scene.add(mesh);
@@ -183,7 +183,7 @@
 			for (let i = 0; i < panels.length; i++) {
 				const p = panels[i];
 				const d = i - focus;
-				p.position.set(d * STEP_X - 0.9, d * STEP_Y - 0.5, -d * STEP_Z);
+				p.position.set(d * STEP_X - 1.05, d * STEP_Y - 0.55, -d * STEP_Z);
 				p.rotation.set(0.14, -0.38, 0);
 				const near = Math.abs(d) < 0.5;
 				const s = near ? 1.06 : 1;
@@ -261,7 +261,7 @@
 
 		// 冰蓝弧光（顶部括号）
 		g.strokeStyle = "#37c3f0";
-		g.lineWidth = 24;
+		g.lineWidth = 34;
 		g.lineCap = "round";
 		g.beginPath();
 		g.moveTo(64, 172);
