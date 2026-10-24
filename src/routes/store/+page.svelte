@@ -1,8 +1,10 @@
 <script lang="ts">
-	// 还原截图 06：采购中心 —— 顶部 tab + 左侧竖排列表 + 中间 3D 商品窗 + 底部黄色 CTA。
-	// 站点适配：商品=站点真实资源（客户端/模板/工具/教程），不编造价格（标"开源免费"）。
+	// 采购中心 · 真 3D（three.js）+ 角色档案视频。
+	// 还原参考：217 的 3D 物件+侧栏 HUD、191 的径向索引、102 的高对比黄、ZMD 立绘视频。
+	// 整页走暗色控制台（终末地游戏 UI 底色），黑底立绘视频无缝融入；黄色单一强调色。
 	import "../endfield-kit.css";
 	import Seo from "$lib/components/Seo.svelte";
+	import { onMount } from "svelte";
 
 	type Item = {
 		group: string;
@@ -28,35 +30,333 @@
 		{ group: "client", code: "No.002", name: "站点源码", en: "Site Source", note: "SvelteKit + PostgreSQL，含终末地主题全家桶。", href: "/projects", tag: "SvelteKit", free: "开源免费" },
 		{ group: "tpl", code: "No.003", name: "文章模板 · 终末地", en: "Article Template", note: "reading 范式正文骨架，编号分节与字段行齐备。", href: "/docs", tag: "Markdown", free: "开源免费" },
 		{ group: "tpl", code: "No.004", name: "页面模板预设", en: "Layout Presets", note: "版心宽度、侧栏目录、页面主色一步到位。", href: "/pages", tag: "Preset", free: "开源免费" },
-		{ group: "tool", code: "No.005", name: "配色工具", en: "Color Tool", note: "终端地色板取值与对比度校验。", href: "/tools/color-tool", tag: "Web", free: "在线使用" },
+		{ group: "tool", code: "No.005", name: "配色工具", en: "Color Tool", note: "终末地色板取值与对比度校验。", href: "/tools/color-tool", tag: "Web", free: "在线使用" },
 		{ group: "tool", code: "No.006", name: "封面生成器", en: "Cover Generator", note: "批量出图，宽体标签与黄块编号。", href: "/tools/cover-generator", tag: "Web", free: "在线使用" },
 		{ group: "tool", code: "No.007", name: "图床 / 图片处理", en: "Image Tool", note: "压图、加水印、批量导出。", href: "/tools/image-tool", tag: "Web", free: "在线使用" },
 		{ group: "doc", code: "No.008", name: "部署到 CF 边缘", en: "CF Edge", note: "Tunnel 接入、优选与安全收口全流程。", href: "/docs", tag: "Guide", free: "免费阅读" }
 	];
 
+	const chars = [
+		{ key: "luoxi", zh: "洛茜", en: "LUOXI", code: "// 01", enter: "/media/zmd/luoxi-enter.mp4", idle: "/media/zmd/luoxi-idle.mp4" },
+		{ key: "si", zh: "祀", en: "SI", code: "// 02", enter: "/media/zmd/si-enter.mp4", idle: "/media/zmd/si-idle.mp4" }
+	];
+
 	let tab = $state("featured");
 	let sel = $state(0);
+	let mode = $state<Record<string, "enter" | "idle">>({ luoxi: "enter", si: "enter" });
 
-	const list = $derived(
-		tab === "featured" ? items : items.filter((i) => i.group === tab)
-	);
-	const cur = $derived<Item>(list[Math.min(sel, list.length - 1)] ?? items[0]);
+	const list = $derived(tab === "featured" ? items : items.filter((i) => i.group === tab));
+	const cur = $derived<Item>(items[sel] ?? items[0]);
 
-	function pick(k: string) {
+	let stageEl: HTMLDivElement | undefined = $state();
+	let api: any = null;
+
+	function pickTab(k: string) {
 		tab = k;
-		sel = 0;
+		const first = items.findIndex((i) => k === "featured" || i.group === k);
+		if (first >= 0) sel = first;
+	}
+
+	function pickItem(it: Item) {
+		sel = items.indexOf(it);
+	}
+
+	onMount(() => {
+		let disposed = false;
+		(async () => {
+			const THREE: any = await import("three");
+			if (disposed || !stageEl) return;
+			api = buildStage(THREE, stageEl, items, (i: number) => {
+				sel = i;
+			});
+			api.select(sel);
+		})();
+		return () => {
+			disposed = true;
+			api?.dispose?.();
+			api = null;
+		};
+	});
+
+	$effect(() => {
+		const s = sel;
+		if (api) api.select(s);
+	});
+
+	function buildStage(THREE: any, el: HTMLDivElement, data: Item[], onPick: (i: number) => void) {
+		const W = () => el.clientWidth || 1;
+		const H = () => el.clientHeight || 1;
+
+		const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+		renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+		renderer.setSize(W(), H());
+		renderer.outputColorSpace = THREE.SRGBColorSpace;
+		el.appendChild(renderer.domElement);
+
+		const scene = new THREE.Scene();
+		const camera = new THREE.PerspectiveCamera(42, W() / H(), 0.1, 200);
+		camera.position.set(0, 1.5, 7.4);
+		camera.lookAt(0, 0.15, 0);
+
+		scene.add(new THREE.AmbientLight(0xffffff, 1.05));
+		const dir = new THREE.DirectionalLight(0xffffff, 1.5);
+		dir.position.set(3.5, 6, 4);
+		scene.add(dir);
+		const acc = new THREE.PointLight(0xfffa00, 16, 40, 2);
+		acc.position.set(-3.5, 3, 3.5);
+		scene.add(acc);
+
+		// 径向地面
+		const floor = new THREE.Mesh(
+			new THREE.PlaneGeometry(26, 26),
+			new THREE.MeshBasicMaterial({ map: radialTexture(THREE), transparent: true, opacity: 0.5, depthWrite: false })
+		);
+		floor.rotation.x = -Math.PI / 2;
+		floor.position.y = -1.65;
+		scene.add(floor);
+
+		// 产品环
+		const carousel = new THREE.Group();
+		scene.add(carousel);
+		const N = data.length;
+		const R = 3.35;
+		const panels: any[] = [];
+		data.forEach((it, i) => {
+			const mesh = new THREE.Mesh(
+				new THREE.PlaneGeometry(2.05, 1.28),
+				new THREE.MeshBasicMaterial({ map: panelTexture(THREE, it, i), transparent: true, side: THREE.DoubleSide })
+			);
+			const ang = (i / N) * Math.PI * 2;
+			mesh.position.set(Math.sin(ang) * R, 0.15, Math.cos(ang) * R);
+			mesh.lookAt(0, 0.15, 0);
+			mesh.userData.index = i;
+			carousel.add(mesh);
+			panels.push(mesh);
+		});
+
+		// 中心核心
+		const core = new THREE.LineSegments(
+			new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(0.92, 0)),
+			new THREE.LineBasicMaterial({ color: 0xfffa00, transparent: true, opacity: 0.85 })
+		);
+		scene.add(core);
+		const ring = new THREE.Mesh(
+			new THREE.RingGeometry(1.52, 1.545, 96),
+			new THREE.MeshBasicMaterial({ color: 0xfffa00, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+		);
+		ring.rotation.x = -Math.PI / 2;
+		ring.position.y = -0.02;
+		scene.add(ring);
+
+		let curRot = 0;
+		let targetRot = 0;
+		let dragging = false;
+		let lastX = 0;
+		let lastInteract = 0;
+		let selected = 0;
+		let raf = 0;
+
+		const angleOf = (i: number) => -(i / N) * Math.PI * 2;
+
+		function select(i: number) {
+			selected = i;
+			targetRot = angleOf(i);
+			while (targetRot - curRot > Math.PI) targetRot -= Math.PI * 2;
+			while (targetRot - curRot < -Math.PI) targetRot += Math.PI * 2;
+			lastInteract = performance.now();
+		}
+
+		const elCanvas = renderer.domElement;
+		elCanvas.style.touchAction = "pan-y";
+		elCanvas.style.cursor = "grab";
+
+		function onDown(e: PointerEvent) {
+			dragging = true;
+			lastX = e.clientX;
+			elCanvas.style.cursor = "grabbing";
+			lastInteract = performance.now();
+		}
+		function onMove(e: PointerEvent) {
+			if (!dragging) return;
+			const dx = e.clientX - lastX;
+			lastX = e.clientX;
+			targetRot += dx * 0.006;
+			curRot += dx * 0.006;
+			lastInteract = performance.now();
+		}
+		function onUp() {
+			dragging = false;
+			elCanvas.style.cursor = "grab";
+		}
+		elCanvas.addEventListener("pointerdown", onDown);
+		window.addEventListener("pointermove", onMove);
+		window.addEventListener("pointerup", onUp);
+		window.addEventListener("pointercancel", onUp);
+
+		const ray = new THREE.Raycaster();
+		const ndc = new THREE.Vector2();
+		function onClick(e: MouseEvent) {
+			const r = elCanvas.getBoundingClientRect();
+			ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+			ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+			ray.setFromCamera(ndc, camera);
+			const hits = ray.intersectObjects(panels, false);
+			if (hits.length) {
+				const idx = hits[0].object.userData.index;
+				select(idx);
+				onPick(idx);
+			}
+		}
+		elCanvas.addEventListener("click", onClick);
+
+		function tick() {
+			raf = requestAnimationFrame(tick);
+			const now = performance.now();
+			if (!dragging && now - lastInteract > 4200) targetRot += 0.0022;
+			curRot += (targetRot - curRot) * 0.085;
+			carousel.rotation.y = curRot;
+			core.rotation.y += 0.0045;
+			core.rotation.x += 0.0018;
+			ring.rotation.z += 0.0016;
+			for (let i = 0; i < panels.length; i++) {
+				const p = panels[i];
+				const t = i === selected ? 1.1 : 1.0;
+				p.scale.x += (t - p.scale.x) * 0.12;
+				p.scale.y += (t - p.scale.y) * 0.12;
+			}
+			renderer.render(scene, camera);
+		}
+		tick();
+
+		const ro = new ResizeObserver(() => {
+			const w = W();
+			const h = H();
+			renderer.setSize(w, h);
+			camera.aspect = w / h;
+			camera.updateProjectionMatrix();
+		});
+		ro.observe(el);
+
+		return {
+			select,
+			dispose() {
+				cancelAnimationFrame(raf);
+				ro.disconnect();
+				elCanvas.removeEventListener("pointerdown", onDown);
+				window.removeEventListener("pointermove", onMove);
+				window.removeEventListener("pointerup", onUp);
+				window.removeEventListener("pointercancel", onUp);
+				elCanvas.removeEventListener("click", onClick);
+				scene.traverse((o: any) => {
+					if (o.geometry) o.geometry.dispose?.();
+					if (o.material) {
+						const m = o.material;
+						if (m.map) m.map.dispose?.();
+						m.dispose?.();
+					}
+				});
+				renderer.dispose();
+				if (elCanvas.parentNode) elCanvas.parentNode.removeChild(elCanvas);
+			}
+		};
+	}
+
+	function radialTexture(THREE: any) {
+		const s = 1024;
+		const c = document.createElement("canvas");
+		c.width = c.height = s;
+		const g = c.getContext("2d")!;
+		g.clearRect(0, 0, s, s);
+		g.strokeStyle = "rgba(237,237,237,0.5)";
+		g.lineWidth = 1.5;
+		const cx = s / 2;
+		for (let r = 40; r < s / 2; r += 46) {
+			g.globalAlpha = Math.max(0.05, 0.5 - r / s);
+			g.beginPath();
+			g.arc(cx, cx, r, 0, Math.PI * 2);
+			g.stroke();
+		}
+		g.globalAlpha = 0.28;
+		for (let i = 0; i < 36; i++) {
+			const a = (i / 36) * Math.PI * 2;
+			g.beginPath();
+			g.moveTo(cx, cx);
+			g.lineTo(cx + Math.cos(a) * (s / 2), cx + Math.sin(a) * (s / 2));
+			g.stroke();
+		}
+		g.globalAlpha = 1;
+		const tex = new THREE.CanvasTexture(c);
+		tex.colorSpace = THREE.SRGBColorSpace;
+		return tex;
+	}
+
+	function panelTexture(THREE: any, it: Item, i: number) {
+		const w = 640;
+		const h = 400;
+		const c = document.createElement("canvas");
+		c.width = w;
+		c.height = h;
+		const g = c.getContext("2d")!;
+		g.fillStyle = "#f4f4f2";
+		g.fillRect(0, 0, w, h);
+		g.strokeStyle = "#161616";
+		g.lineWidth = 8;
+		g.strokeRect(4, 4, w - 8, h - 8);
+		g.fillStyle = "#fffa00";
+		g.beginPath();
+		g.moveTo(w - 96, 4);
+		g.lineTo(w - 4, 96);
+		g.lineTo(w - 4, 4);
+		g.closePath();
+		g.fill();
+		g.fillStyle = "#161616";
+		g.font = '800 40px "Saira", system-ui, sans-serif';
+		g.fillText(String(i + 1).padStart(2, "0"), w - 70, 46);
+		g.fillStyle = "#5c5c5c";
+		g.font = '600 24px "Saira", system-ui, sans-serif';
+		g.fillText(it.code, 40, 62);
+		g.fillStyle = "#161616";
+		g.fillRect(40, 84, 132, 34);
+		g.fillStyle = "#f4f4f2";
+		g.font = '700 18px "Saira", system-ui, sans-serif';
+		g.fillText(it.tag, 54, 108);
+		g.fillStyle = "#161616";
+		g.font = '800 38px "Saira", system-ui, sans-serif';
+		wrap(g, it.name, 40, 178, w - 80, 46);
+		g.fillStyle = "#5c5c5c";
+		g.font = '400 20px system-ui, "Noto Sans SC", sans-serif';
+		wrap(g, it.note, 40, 286, w - 80, 30);
+		g.fillStyle = "#161616";
+		g.font = '800 28px "Saira", system-ui, sans-serif';
+		g.fillText(it.free, 40, h - 34);
+		const tex = new THREE.CanvasTexture(c);
+		tex.colorSpace = THREE.SRGBColorSpace;
+		tex.anisotropy = 4;
+		return tex;
+	}
+
+	function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lh: number) {
+		let line = "";
+		for (const ch of text) {
+			const test = line + ch;
+			if (g.measureText(test).width > maxW && line) {
+				g.fillText(line, x, y);
+				line = ch;
+				y += lh;
+			} else line = test;
+		}
+		if (line) g.fillText(line, x, y);
 	}
 </script>
 
-<Seo title="采购中心" description="站点资源采购中心：客户端、模板、工具与教程，一处置取。" path="/store" />
+<Seo title="采购中心" description="站点资源采购中心：3D 陈列、客户端、模板、工具与教程。" path="/store" />
 
 <div class="ex store">
-	<!-- 顶栏 -->
 	<header class="topbar">
 		<a class="brand" href="/"><span class="seal">S</span>采购中心</a>
 		<nav class="tabs" aria-label="资源分类">
 			{#each tabs as t (t.k)}
-				<button type="button" class:on={tab === t.k} onclick={() => pick(t.k)}>
+				<button type="button" class:on={tab === t.k} onclick={() => pickTab(t.k)}>
 					{t.zh}<small>{t.en}</small>
 				</button>
 			{/each}
@@ -68,13 +368,15 @@
 		</div>
 	</header>
 
-	<div class="body">
-		<!-- 左：商品列表 -->
-		<aside class="shelf" aria-label="商品列表">
+	<div class="stage-wrap">
+		<div class="canvas" bind:this={stageEl} aria-hidden="true"></div>
+
+		<aside class="hud left" aria-label="商品列表">
+			<p class="hud-title">// Shelf</p>
 			<ol>
-				{#each list as it, i (it.code)}
+				{#each list as it (it.code)}
 					<li>
-						<button type="button" class:cur={i === sel} onclick={() => (sel = i)}>
+						<button type="button" class:cur={items.indexOf(it) === sel} onclick={() => pickItem(it)}>
 							<span class="nm">{it.name}</span>
 							<span class="cd">{it.code}</span>
 						</button>
@@ -83,44 +385,64 @@
 			</ol>
 		</aside>
 
-		<!-- 中：商品展示 -->
-		<section class="showcase" aria-live="polite">
-			<div class="watermark" aria-hidden="true">STELARITH</div>
+		<aside class="hud right" aria-live="polite">
+			<p class="hud-title slash">{cur.en}</p>
+			<h1>{cur.name}</h1>
+			<p class="note">{cur.note}</p>
+			<dl class="facts">
+				<div><dt>编号</dt><dd>{cur.code}</dd></div>
+				<div><dt>类型</dt><dd>{cur.tag}</dd></div>
+				<div><dt>获取</dt><dd>{cur.free}</dd></div>
+			</dl>
+			<a class="cta" href={cur.href}>前往获取 <span aria-hidden="true">→</span></a>
+		</aside>
 
-			<div class="stage" aria-hidden="true">
-				<div class="box">
-					<span class="face top"></span>
-					<span class="face left"></span>
-					<span class="face right"></span>
-					<span class="side-arc"></span>
-				</div>
-			</div>
-
-			<div class="meta">
-				<div class="titleblock">
-					<p class="eyebrow slash">Store / {cur.en}</p>
-					<h1>{cur.name}</h1>
-					<p class="note">{cur.note}</p>
-				</div>
-				<div class="buy">
-					<span class="price">{cur.free}</span>
-					<a class="cta" href={cur.href}>前往获取 <span aria-hidden="true">→</span></a>
-				</div>
-			</div>
-
-			<div class="flagline">
-				<span class="flag">限时</span>
-				<span>站点资源常年开放，无需付费 · <b>{cur.tag}</b></span>
-			</div>
-		</section>
+		<div class="band">
+			<span class="flag">限时</span>
+			<span>轮盘陈列 · 拖动旋转 / 点击选中 · 全部开源免费</span>
+			<span class="hint">// DRAG TO ROTATE</span>
+		</div>
 	</div>
+
+	<section class="chars">
+		<header class="chars-head">
+			<p class="ex-eyebrow slash">Character Archive</p>
+			<h2>角色档案</h2>
+			<span class="ex-field">立绘动作 · 入场 / 待机</span>
+		</header>
+		{#each chars as c (c.key)}
+			<figure class="char">
+				<div class="vid">
+					{#key mode[c.key]}
+						<video
+							src={mode[c.key] === "idle" ? c.idle : c.enter}
+							autoplay
+							muted
+							loop
+							playsinline
+							preload="metadata"
+						></video>
+					{/key}
+					<div class="cap">
+						<span class="cno">{c.code}</span>
+						<span class="cn">{c.zh}</span>
+						<span class="cen">{c.en}</span>
+					</div>
+				</div>
+				<div class="modes">
+					<button type="button" class:on={mode[c.key] === "enter"} onclick={() => (mode[c.key] = "enter")}>入场</button>
+					<button type="button" class:on={mode[c.key] === "idle"} onclick={() => (mode[c.key] = "idle")}>待机</button>
+				</div>
+			</figure>
+		{/each}
+	</section>
 </div>
 
 <style>
 	.store {
 		min-height: 100dvh;
-		background: var(--ex-paper, #f4f4f2);
-		color: var(--ex-ink, #161616);
+		background: #0e0e0d;
+		color: #ededed;
 		display: flex;
 		flex-direction: column;
 	}
@@ -129,8 +451,8 @@
 		align-items: center;
 		gap: 1.2rem;
 		padding: 0.7rem 1.2rem;
-		background: var(--ex-ink, #161616);
-		color: var(--ex-paper, #f4f4f2);
+		background: #000;
+		border-bottom: 1px solid #2a2a28;
 	}
 	.brand {
 		display: inline-flex;
@@ -139,7 +461,7 @@
 		font-family: var(--ex-font-ui, inherit);
 		font-weight: 700;
 		font-size: 0.9rem;
-		color: inherit;
+		color: #ededed;
 		text-decoration: none;
 	}
 	.seal {
@@ -147,19 +469,19 @@
 		place-items: center;
 		width: 1.4rem;
 		height: 1.4rem;
-		background: var(--ex-signal, #fffa00);
-		color: var(--ex-on-signal, #161616);
+		background: #fffa00;
+		color: #161616;
 		font-weight: 800;
 		clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
 	}
 	.tabs {
 		display: flex;
-		gap: 0.2rem;
+		gap: 0.15rem;
 	}
 	.tabs button {
 		background: none;
 		border: 0;
-		color: color-mix(in srgb, var(--ex-paper, #f4f4f2) 62%, transparent);
+		color: rgba(237, 237, 237, 0.55);
 		font-family: var(--ex-font-ui, inherit);
 		font-size: 0.8rem;
 		font-weight: 600;
@@ -170,14 +492,14 @@
 		gap: 0.4rem;
 	}
 	.tabs button small {
-		font-size: 0.56rem;
+		font-size: 0.54rem;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		opacity: 0.7;
+		opacity: 0.65;
 	}
 	.tabs button.on {
-		background: var(--ex-signal, #fffa00);
-		color: var(--ex-on-signal, #161616);
+		background: #fffa00;
+		color: #161616;
 		clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
 	}
 	.wallet {
@@ -189,237 +511,287 @@
 		font-size: 0.78rem;
 		font-variant-numeric: tabular-nums;
 	}
-	.coin {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25rem;
-	}
 	.coin i {
 		font-style: normal;
-		color: var(--ex-signal, #fffa00);
+		color: #fffa00;
 	}
 	.close {
-		color: inherit;
+		color: #ededed;
 		text-decoration: none;
 		margin-left: 0.4rem;
 		opacity: 0.8;
 	}
-	.body {
-		flex: 1;
-		display: grid;
-		grid-template-columns: 13rem minmax(0, 1fr);
-		min-height: 0;
+	.stage-wrap {
+		position: relative;
+		height: clamp(460px, 66vh, 780px);
+		overflow: hidden;
+		background:
+			radial-gradient(120% 90% at 50% 0%, rgba(255, 250, 0, 0.06), transparent 60%),
+			radial-gradient(120% 100% at 50% 100%, rgba(237, 237, 237, 0.05), transparent 55%),
+			#0e0e0d;
 	}
-	.shelf {
-		border-right: 1px solid var(--ex-rule, #d9d9d6);
-		padding: 1rem 0.6rem;
+	.canvas {
+		position: absolute;
+		inset: 0;
+	}
+	.canvas :global(canvas) {
+		display: block;
+		width: 100% !important;
+		height: 100% !important;
+	}
+	.hud {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		background: linear-gradient(180deg, rgba(10, 10, 9, 0.82), rgba(10, 10, 9, 0.62));
+		-webkit-backdrop-filter: blur(6px);
+		backdrop-filter: blur(6px);
+		padding: 1rem;
 		overflow-y: auto;
 	}
-	.shelf ol {
+	.hud.left {
+		left: 0;
+		width: 15rem;
+		border-right: 1px solid #2a2a28;
+	}
+	.hud.right {
+		right: 0;
+		width: 19rem;
+		border-left: 1px solid #2a2a28;
+		display: flex;
+		flex-direction: column;
+	}
+	.hud-title {
+		margin: 0 0 0.7rem;
+		font-family: var(--ex-font-ui, inherit);
+		font-size: 0.62rem;
+		font-weight: 600;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: rgba(237, 237, 237, 0.5);
+	}
+	.hud.left ol {
 		list-style: none;
 		margin: 0;
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.15rem;
 	}
-	.shelf button {
+	.hud.left button {
 		width: 100%;
 		text-align: left;
 		background: none;
 		border: 0;
-		padding: 0.6rem 0.7rem;
+		padding: 0.55rem 0.6rem;
 		cursor: pointer;
-		color: var(--ex-ink-2, #5c5c5c);
+		color: rgba(237, 237, 237, 0.6);
 		display: flex;
 		justify-content: space-between;
 		align-items: baseline;
 		gap: 0.5rem;
 		border-left: 3px solid transparent;
 	}
-	.shelf button .nm {
-		font-size: 0.82rem;
+	.hud.left button .nm {
+		font-size: 0.8rem;
 	}
-	.shelf button .cd {
+	.hud.left button .cd {
 		font-family: var(--ex-font-ui, inherit);
-		font-size: 0.6rem;
+		font-size: 0.58rem;
 		opacity: 0.6;
 	}
-	.shelf button:hover {
-		color: var(--ex-ink, #161616);
+	.hud.left button:hover {
+		color: #ededed;
 	}
-	.shelf button.cur {
-		color: var(--ex-ink, #161616);
-		background: var(--ex-panel, #fff);
-		border-left-color: var(--ex-signal, #fffa00);
-		font-weight: 600;
+	.hud.left button.cur {
+		color: #161616;
+		background: #fffa00;
+		font-weight: 700;
 	}
-	.showcase {
-		position: relative;
-		display: grid;
-		grid-template-rows: 1fr auto auto;
-		padding: 1.2rem 2rem 1rem;
-		overflow: hidden;
-	}
-	.watermark {
-		position: absolute;
-		inset: auto 0 32% 0;
-		text-align: center;
-		font-family: var(--ex-font-ui, inherit);
-		font-weight: 800;
-		font-stretch: 125%;
-		font-size: clamp(3rem, 9vw, 7rem);
-		letter-spacing: 0.04em;
-		color: color-mix(in srgb, var(--ex-ink, #161616) 6%, transparent);
-		pointer-events: none;
-		user-select: none;
-	}
-	.stage {
-		display: grid;
-		place-items: center;
-		perspective: 1100px;
-	}
-	.box {
-		position: relative;
-		width: 12rem;
-		height: 9rem;
-		transform-style: preserve-3d;
-		transform: rotateX(14deg) rotateY(-26deg);
-	}
-	.face {
-		position: absolute;
-		border: 1.5px solid var(--ex-ink, #161616);
-	}
-	.face.top {
-		width: 12rem;
-		height: 12rem;
-		background: var(--ex-panel, #fff);
-		transform: rotateX(90deg) translateZ(3.6rem);
-	}
-	.face.left {
-		width: 7.4rem;
-		height: 9rem;
-		background: var(--ex-paper, #f4f4f2);
-		transform: translateZ(0);
-	}
-	.face.right {
-		width: 7.4rem;
-		height: 9rem;
-		left: 7.4rem;
-		background: color-mix(in srgb, var(--ex-panel, #fff) 82%, var(--ex-ink, #161616));
-		transform: rotateY(90deg) translateZ(0.2rem);
-		transform-origin: left center;
-	}
-	.side-arc {
-		position: absolute;
-		left: 0;
-		top: 0;
-		width: 12rem;
-		height: 3.2rem;
-		border-top: 4px solid var(--ex-signal, #fffa00);
-		border-radius: 0 0 50% 50% / 0 0 100% 100%;
-		transform: rotateX(90deg) translateZ(3.55rem) translateY(-0.2rem);
-	}
-	.meta {
-		display: flex;
-		align-items: flex-end;
-		justify-content: space-between;
-		gap: 1.5rem;
-		border-top: 1px solid var(--ex-rule, #d9d9d6);
-		padding-top: 1rem;
-	}
-	.eyebrow {
-		margin: 0;
-		font-family: var(--ex-font-ui, inherit);
-		font-size: 0.64rem;
-		font-weight: 600;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--ex-ink-2, #5c5c5c);
-	}
-	.titleblock h1 {
-		margin: 0.35rem 0 0;
-		font-family: var(--ex-font-ui, inherit);
-		font-weight: 800;
-		font-size: clamp(1.3rem, 2.6vw, 1.9rem);
-		letter-spacing: 0.01em;
-	}
-	.note {
-		margin: 0.45rem 0 0;
-		max-width: 32rem;
-		font-size: 0.8rem;
-		line-height: 1.6;
-		color: var(--ex-ink-2, #5c5c5c);
-	}
-	.buy {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		gap: 0.5rem;
-		white-space: nowrap;
-	}
-	.price {
+	.hud.right h1 {
+		margin: 0.2rem 0 0;
 		font-family: var(--ex-font-ui, inherit);
 		font-weight: 800;
 		font-size: 1.5rem;
-		color: var(--ex-ink, #161616);
+		line-height: 1.15;
+		color: #ededed;
+	}
+	.hud.right .note {
+		margin: 0.6rem 0 0;
+		font-size: 0.8rem;
+		line-height: 1.65;
+		color: rgba(237, 237, 237, 0.62);
+	}
+	.facts {
+		margin: 1.1rem 0 0;
+		border-top: 1px solid #2a2a28;
+	}
+	.facts div {
+		display: flex;
+		justify-content: space-between;
+		padding: 0.5rem 0;
+		border-bottom: 1px solid #2a2a28;
+	}
+	.facts dt {
+		font-size: 0.72rem;
+		color: rgba(237, 237, 237, 0.5);
+	}
+	.facts dd {
+		margin: 0;
+		font-family: var(--ex-font-ui, inherit);
+		font-size: 0.78rem;
+		color: #ededed;
 	}
 	.cta {
+		margin-top: auto;
 		display: inline-flex;
 		align-items: center;
+		justify-content: center;
 		gap: 0.5rem;
-		background: var(--ex-signal, #fffa00);
-		color: var(--ex-on-signal, #161616);
+		background: #fffa00;
+		color: #161616;
 		font-family: var(--ex-font-ui, inherit);
-		font-weight: 700;
-		font-size: 0.9rem;
+		font-weight: 800;
+		font-size: 0.92rem;
 		text-decoration: none;
-		padding: 0.7rem 1.6rem;
-		clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+		padding: 0.85rem 1.4rem;
+		clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
 		transition: transform 0.14s var(--ex-mech, cubic-bezier(0.7, 0, 0.2, 1));
 	}
 	.cta:hover {
 		transform: translateY(-1px);
 	}
-	.flagline {
+	.band {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
 		display: flex;
 		align-items: center;
 		gap: 0.7rem;
-		margin-top: 0.9rem;
-		padding-top: 0.8rem;
-		border-top: 1px solid var(--ex-rule, #d9d9d6);
+		padding: 0.55rem 1rem;
+		background: linear-gradient(0deg, rgba(0, 0, 0, 0.9), transparent);
 		font-size: 0.72rem;
-		color: var(--ex-ink-2, #5c5c5c);
+		color: rgba(237, 237, 237, 0.7);
 	}
 	.flag {
-		background: var(--ex-signal, #fffa00);
-		color: var(--ex-on-signal, #161616);
+		background: #fffa00;
+		color: #161616;
 		font-family: var(--ex-font-ui, inherit);
 		font-weight: 700;
-		padding: 0.15rem 0.5rem;
+		padding: 0.12rem 0.5rem;
 	}
-	.flagline b {
-		color: var(--ex-ink, #161616);
+	.band .hint {
+		margin-left: auto;
+		font-family: var(--ex-font-ui, inherit);
+		font-size: 0.62rem;
+		letter-spacing: 0.14em;
+		opacity: 0.45;
 	}
-	@media (max-width: 860px) {
-		.body {
-			grid-template-columns: 1fr;
-		}
-		.shelf {
-			border-right: 0;
-			border-bottom: 1px solid var(--ex-rule, #d9d9d6);
-			max-height: 11rem;
-		}
-		.box {
-			width: 9rem;
-			height: 7rem;
-		}
-		.meta {
+	.chars {
+		padding: 1.4rem clamp(1rem, 4vw, 2.5rem) 3rem;
+		border-top: 1px solid #2a2a28;
+	}
+	.chars-head {
+		display: flex;
+		align-items: baseline;
+		gap: 1rem;
+		margin-bottom: 1.2rem;
+	}
+	.chars-head h2 {
+		margin: 0;
+		font-family: var(--ex-font-ui, inherit);
+		font-weight: 800;
+		font-size: 1.4rem;
+		color: #ededed;
+	}
+	.chars-head .ex-field {
+		margin-left: auto;
+	}
+	.char {
+		margin: 0 0 1.6rem;
+	}
+	.vid {
+		position: relative;
+		background: #000;
+		border: 1px solid #2a2a28;
+		overflow: hidden;
+	}
+	.vid video {
+		display: block;
+		width: 100%;
+		height: auto;
+		aspect-ratio: 1600 / 450;
+		object-fit: cover;
+	}
+	.vid .cap {
+		position: absolute;
+		left: 0;
+		bottom: 0;
+		display: flex;
+		align-items: baseline;
+		gap: 0.6rem;
+		padding: 1rem 1.2rem;
+		background: linear-gradient(0deg, rgba(0, 0, 0, 0.75), transparent);
+	}
+	.cno {
+		font-family: var(--ex-font-ui, inherit);
+		font-size: 0.64rem;
+		color: #fffa00;
+		letter-spacing: 0.1em;
+	}
+	.cn {
+		font-family: var(--ex-font-ui, inherit);
+		font-weight: 800;
+		font-size: 1.15rem;
+		color: #ededed;
+	}
+	.cen {
+		font-family: var(--ex-font-ui, inherit);
+		font-size: 0.66rem;
+		letter-spacing: 0.14em;
+		color: rgba(237, 237, 237, 0.6);
+	}
+	.modes {
+		display: flex;
+		gap: 0.4rem;
+		margin-top: 0.5rem;
+	}
+	.modes button {
+		background: none;
+		border: 1px solid #2a2a28;
+		color: rgba(237, 237, 237, 0.6);
+		font-family: var(--ex-font-ui, inherit);
+		font-size: 0.74rem;
+		padding: 0.35rem 0.9rem;
+		cursor: pointer;
+	}
+	.modes button.on {
+		border-color: #fffa00;
+		color: #fffa00;
+	}
+	@media (max-width: 900px) {
+		.stage-wrap {
+			height: auto;
+			display: flex;
 			flex-direction: column;
-			align-items: flex-start;
 		}
-		.buy {
-			align-items: flex-start;
+		.canvas {
+			position: relative;
+			height: 320px;
+		}
+		.hud {
+			position: relative;
+			width: 100%;
+			border: 0;
+			border-top: 1px solid #2a2a28;
+		}
+		.hud.right {
+			width: 100%;
+		}
+		.band {
+			position: relative;
+			background: none;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
