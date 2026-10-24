@@ -11,6 +11,7 @@
 	import IssuesPanel from "$lib/components/board/issues-panel.svelte";
 	import ReleasesPanel from "$lib/components/board/releases-panel.svelte";
 	import Seo from "$lib/components/Seo.svelte";
+	import BlueprintPanel from "$lib/components/endfield/blueprint-panel.svelte";
 	import { can } from "$lib/permissions.js";
 
 	let {
@@ -32,6 +33,18 @@
 
 	const board = $derived(data.board);
 	const sync = $derived(board?.sync ?? null);
+
+	// 蓝图规格字段：全部来自仓库同步 / 内容库，缺项写 "—"（不编造）。
+	const specFields = $derived([
+		{ k: "仓库", v: board?.repo || data.project?.repoUrl?.replace(/^https?:\/\/github\.com\//, "") || "—" },
+		{ k: "语言", v: sync?.language || "—" },
+		{ k: "许可", v: sync?.license || "—" },
+		{ k: "Star", v: sync ? String(sync.stars) : "—" },
+		{ k: "Fork", v: sync ? String(sync.forks) : "—" },
+		{ k: "近一年提交", v: sync ? String(sync.commitTotal) : "—" },
+		{ k: "打开 Issue", v: String(data.stats?.open ?? 0) },
+		{ k: "发行", v: board?.releases?.length ? String(board.releases.length) : "—" }
+	]);
 
 	// 有展板就默认进「概览」，否则只显示正文
 	let tab = $state<"overview" | "progress" | "issues" | "releases">("overview");
@@ -203,6 +216,14 @@
 	<!-- Tab 内容 -->
 	{#if tab === "overview"}
 		<div class="flex flex-col gap-6">
+			<BlueprintPanel
+				eyebrow="Spec / 结构规格"
+				title={data.project.title}
+				code={board?.repo || data.project.slug || ""}
+				fields={specFields}
+				note="字段取自仓库同步与内容库；缺项显示为 —。"
+			/>
+
 			{#if board && sync && !sync.error}
 				<Heatmap contrib={board.contrib ?? {}} weeks={53} label="提交活跃度" sub={board.repo} />
 			{:else if board && !board.repo}
