@@ -23,8 +23,10 @@ const API = "https://api.github.com";
  * GITHUB_TOKEN、无论怎么调配额，同步都不可能成功，而错误信息只会说「网络无法访问 GitHub」，
  * 看不出是"墙"还是"GitHub 挂了"，更看不出有解。
  *
- * 给一个 `GITHUB_API_BASE`，就能指向自己的加速/反代端点（本站已有 gh.245959623.xyz 这类），
- * 不必改一行代码。留空即用官方地址，行为与之前完全一致。
+ * 给一个 `GITHUB_API_BASE`，就能指向自己的加速/反代端点（例如自建的 Cloudflare Worker，
+ * 见 deploy/site/cloudflare/github-api-worker/），不必改一行代码。留空即用官方地址。
+ * ⚠️ 注意：gh.245959623.xyz 这类端点只反代 **git 协议**（clone/pull/push），
+ *    并不反代 REST API；要让本站的「同步仓库」可用，必须另建一个 api.github.com 反代。
  *
  * ⚠️ 指向第三方端点等于把请求交给它中转：官方端点请务必用 https，
  * 且只填自己可控的地址 —— 令牌会被发往这个地址。
