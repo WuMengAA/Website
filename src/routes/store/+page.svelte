@@ -128,7 +128,8 @@
 			);
 			const ang = (i / N) * Math.PI * 2;
 			mesh.position.set(Math.sin(ang) * R, 0.15, Math.cos(ang) * R);
-			mesh.lookAt(0, 0.15, 0);
+			// 朝外（面向相机）：若 lookAt 圆心会背对相机，DoubleSide 背面渲染导致文字左右镜像。
+			mesh.lookAt(mesh.position.x * 2, 0.15, mesh.position.z * 2);
 			mesh.userData.index = i;
 			carousel.add(mesh);
 			panels.push(mesh);
