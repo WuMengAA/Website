@@ -5,7 +5,7 @@
 	import { Badge } from "$lib/components/ui/badge/index.js";
 	import IconPicker from "$lib/components/icon-picker.svelte";
 	import { confirmDelete } from "$lib/components/admin/confirm.svelte";
-	import { Plus, Trash2, ArrowUp, ArrowDown, GripVertical, Save, LayoutList, Layers, ExternalLink } from "@lucide/svelte";
+	import { Plus, Trash2, ArrowUp, ArrowDown, GripVertical, Save, LayoutList, Layers, ExternalLink, RotateCcw } from "@lucide/svelte";
 
 	type NavItem = { title: string; url: string; icon?: string; external?: boolean };
 	type Layout = "list" | "grid" | "inline";
@@ -155,6 +155,47 @@
 		saving = false;
 	}
 
+	/**
+	 * 恢复出厂导航：删掉运行时覆盖层，落回 nav-defaults.ts。
+	 * 典型场景是换了机器 / content 被重置后，导航退回过时的旧默认值，
+	 * 与其手动一条条补，不如一键回到代码里那套。
+	 */
+	async function resetToDefault() {
+		if (
+			!(await confirmDelete(
+				"恢复出厂导航？",
+				"将清除当前的导航配置（含自定义分组），回到代码里的出厂默认值。文章内容与数据库不受影响。"
+			))
+		)
+			return;
+		saving = true;
+		error = "";
+		try {
+			const res = await fetch("/api/nav", { method: "DELETE" });
+			if (res.ok) {
+				const data = await res.json();
+				const nav = data.nav;
+				fixed = fixed.map((g) => ({ ...g, items: (nav[g.key] || []) as NavItem[] }));
+				customGroups = (Array.isArray(nav.groups) ? nav.groups : []).map((g: Partial<CustomGroup>) => ({
+					key: String(g.key || ""),
+					label: String(g.label || ""),
+					icon: g.icon || "",
+					layout: (g.layout || "list") as Layout,
+					collapsed: g.collapsed === true,
+					showIn: (g.showIn || "both") as ShowIn,
+					items: (g.items || []) as NavItem[]
+				}));
+				saved = true;
+				setTimeout(() => (saved = false), 2500);
+			} else {
+				error = res.status === 403 ? "权限不足（需要编辑及以上）" : "恢复失败";
+			}
+		} catch {
+			error = "恢复失败";
+		}
+		saving = false;
+	}
+
 	onMount(load);
 </script>
 
@@ -215,10 +256,17 @@
 			配置侧边栏：固定三组（工作区/更多/底部）+ 自定义分组（如「镜像站」）。保存后刷新前台生效。
 		</p>
 	</div>
-	<Button onclick={save} disabled={saving}>
-		<Save class="mr-2 h-4 w-4" />
-		{saving ? "保存中..." : "保存导航"}
-	</Button>
+	<div class="flex items-center gap-2">
+		<!-- 恢复出厂：删掉 nav.json 覆盖层，落回代码里的 nav-defaults.ts -->
+		<Button variant="outline" onclick={resetToDefault} disabled={saving} title="清除当前导航配置，回到出厂默认值">
+			<RotateCcw class="mr-2 h-4 w-4" />
+			恢复出厂
+		</Button>
+		<Button onclick={save} disabled={saving}>
+			<Save class="mr-2 h-4 w-4" />
+			{saving ? "保存中..." : "保存导航"}
+		</Button>
+	</div>
 </div>
 
 {#if error}

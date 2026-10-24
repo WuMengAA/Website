@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { getNav, saveNav } from "$lib/server/content-store.js";
+import { getNav, saveNav, resetNav } from "$lib/server/content-store.js";
 import { verifyToken } from "$lib/server/auth.js";
 import { userCan } from "$lib/permissions.js";
 
@@ -27,4 +27,16 @@ export async function POST({ request }) {
 		groups: Array.isArray(body.groups) ? body.groups : []
 	});
 	return json({ ok: true });
+}
+
+/**
+ * 恢复出厂导航（2026-10-24）：删掉 nav.json 覆盖层，落回 nav-defaults.ts。
+ * 门槛与保存一致（manageContent）—— 它能让全站侧边栏变样，不是只读操作。
+ */
+export async function DELETE({ request }) {
+	const user = await verifyToken(request.headers.get("cookie")?.match(/admin_token=([^;]+)/)?.[1] || "");
+	if (!user) return json({ error: "未登录" }, { status: 401 });
+	if (!userCan(user, "manageContent")) return json({ error: "权限不足" }, { status: 403 });
+
+	return json({ ok: true, nav: resetNav() });
 }

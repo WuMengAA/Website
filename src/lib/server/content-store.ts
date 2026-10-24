@@ -713,6 +713,10 @@ export function setLinkApplicationStatus(id: string, status: "approved" | "rejec
 	return app;
 }
 
+// 出厂导航默认值（进 git）。只导入类型以外的东西才会产生运行时依赖，
+// 而 nav-defaults.ts 只从本文件 import **type**，不会形成真实的循环引用。
+import { DEFAULT_NAV } from "./nav-defaults.js";
+
 export interface NavItem { title: string; url: string; icon?: string; external?: boolean; }
 /**
  * 自定义导航组（「镜像站」「我的其他站点」这类，由后台自行增删）。
@@ -892,14 +896,10 @@ const NAV_FILE = path.join(CONTENT_DIR, "nav.json");
 
 export function getNav(): NavConfig {
 	ensureDirs();
-	const defaults: NavConfig = {
-		workspace: [
-			{ title: "首页", url: "/" }, { title: "更新日志", url: "/changelog" }, { title: "站点动态", url: "/pulse" }, { title: "项目", url: "/projects" }, { title: "教程", url: "/docs" }, { title: "页面", url: "/pages" }
-		],
-		more: [],
-		bottom: [{ title: "管理后台", url: "/admin" }],
-		groups: []
-	};
+	// 默认值不再写死在函数体里 —— 那里藏过一整套与线上实际不符的旧导航，
+	// 只在 nav.json 缺失时才现身，平时没人看得见、也就没人发现它早已过时。
+	// 现在出厂导航统一由 nav-defaults.ts 提供（进 git，与代码同步演进）。
+	const defaults: NavConfig = DEFAULT_NAV;
 	if (!fs.existsSync(NAV_FILE)) return defaults;
 	const data = cachedJsonFile<Partial<NavConfig>>(NAV_FILE, {} as Partial<NavConfig>);
 	return {
@@ -960,6 +960,23 @@ export function saveNav(nav: NavConfig): void {
 	};
 	fs.writeFileSync(NAV_FILE, JSON.stringify(clean, null, 2), "utf-8");
 	jsonCache.delete(NAV_FILE);
+}
+
+/**
+ * 恢复出厂导航：删掉运行时的 nav.json 覆盖层。
+ *
+ * 选「删文件」而不是「把出厂值写回 nav.json」，是因为两者语义不同：
+ * 写回等于把当前出厂值**冻成一份快照**，日后出厂导航随代码演进（新增入口、调整排序），
+ * 这个站点也永远停在按下按钮那天的样子；删文件才是真的回到出厂 —— 之后继续跟着代码走。
+ *
+ * 这是站长在后台主动点的破坏性操作，事前会确认，且被删的只是可再生的个人化配置，
+ * 站点内容(posts/docs)与数据库一字不动。
+ */
+export function resetNav(): NavConfig {
+	ensureDirs();
+	if (fs.existsSync(NAV_FILE)) fs.unlinkSync(NAV_FILE);
+	jsonCache.delete(NAV_FILE);
+	return getNav();
 }
 
 // ───────────────────────────────────────────────────────────────────────────

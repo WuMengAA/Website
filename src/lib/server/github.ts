@@ -15,6 +15,25 @@ import { env } from "$env/dynamic/private";
 
 const API = "https://api.github.com";
 
+/**
+ * API 根地址：**可配置**（2026-10-24）。
+ *
+ * 为什么要留这个口子：部署机所在的网络未必能直连 api.github.com —— 本机实测就是
+ * DNS 能解析（20.205.243.168）但 TCP 连不上，`fetch failed`。这种情况下无论配不配
+ * GITHUB_TOKEN、无论怎么调配额，同步都不可能成功，而错误信息只会说「网络无法访问 GitHub」，
+ * 看不出是"墙"还是"GitHub 挂了"，更看不出有解。
+ *
+ * 给一个 `GITHUB_API_BASE`，就能指向自己的加速/反代端点（本站已有 gh.245959623.xyz 这类），
+ * 不必改一行代码。留空即用官方地址，行为与之前完全一致。
+ *
+ * ⚠️ 指向第三方端点等于把请求交给它中转：官方端点请务必用 https，
+ * 且只填自己可控的地址 —— 令牌会被发往这个地址。
+ */
+function apiBase(): string {
+	const raw = (env.GITHUB_API_BASE ?? "").trim();
+	return (raw || API).replace(/\/+$/, "");
+}
+
 /** GitHub API 错误（含限流信息），便于上层区分「配额用尽」与「仓库不存在」。 */
 export class GithubError extends Error {
 	status: number;
@@ -133,7 +152,7 @@ async function ghFetch(url: string): Promise<{ data: any; headers: Headers }> {
 }
 
 async function gh(pathOrUrl: string): Promise<{ data: any; headers: Headers }> {
-	const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${API}${pathOrUrl}`;
+	const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${apiBase()}${pathOrUrl}`;
 
 	// ① 熔断期内不再打扰 GitHub
 	if (Date.now() < circuitOpenUntil) {
