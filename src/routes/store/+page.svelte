@@ -95,8 +95,8 @@
 
 		const scene = new THREE.Scene();
 		const camera = new THREE.PerspectiveCamera(42, W() / H(), 0.1, 200);
-		camera.position.set(0, 1.5, 7.4);
-		camera.lookAt(0, 0.15, 0);
+		camera.position.set(0, 0.35, 9.6);
+		camera.lookAt(0, 0, 0);
 
 		scene.add(new THREE.AmbientLight(0xffffff, 1.05));
 		const dir = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -106,65 +106,40 @@
 		acc.position.set(-3.5, 3, 3.5);
 		scene.add(acc);
 
-		// 径向地面
-		const floor = new THREE.Mesh(
-			new THREE.PlaneGeometry(26, 26),
-			new THREE.MeshBasicMaterial({ map: radialTexture(THREE), transparent: true, opacity: 0.5, depthWrite: false })
-		);
-		floor.rotation.x = -Math.PI / 2;
-		floor.position.y = -1.65;
-		scene.add(floor);
-
-		// 产品环
+		// 平面多卡片：卡片沿 X 轴排开、正面朝相机；选中项居中，切换时横向滑动。
 		const carousel = new THREE.Group();
 		scene.add(carousel);
 		const N = data.length;
-		const R = 3.35;
+		const SPACING = 2.55;
 		const panels: any[] = [];
 		data.forEach((it, i) => {
-			const mesh = new THREE.Mesh(
-				new THREE.PlaneGeometry(2.05, 1.28),
-				new THREE.MeshBasicMaterial({ map: panelTexture(THREE, it, i), transparent: true, side: THREE.DoubleSide })
-			);
-			const ang = (i / N) * Math.PI * 2;
-			mesh.position.set(Math.sin(ang) * R, 0.15, Math.cos(ang) * R);
-			// 朝外（面向相机）：若 lookAt 圆心会背对相机，DoubleSide 背面渲染导致文字左右镜像。
-			mesh.lookAt(mesh.position.x * 2, 0.15, mesh.position.z * 2);
+			const mat = new THREE.MeshBasicMaterial({ map: panelTexture(THREE, it, i), transparent: true });
+			const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.375), mat);
+			mesh.position.set(i * SPACING, 0, 0);
 			mesh.userData.index = i;
 			carousel.add(mesh);
 			panels.push(mesh);
 		});
 
-		// 中心核心
-		const core = new THREE.LineSegments(
-			new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(0.92, 0)),
-			new THREE.LineBasicMaterial({ color: 0xfffa00, transparent: true, opacity: 0.85 })
+		// 地面基线（横向黄线，弱）
+		const baseLine = new THREE.Line(
+			new THREE.BufferGeometry().setFromPoints([
+				new THREE.Vector3(-16, -1.2, 0),
+				new THREE.Vector3(16, -1.2, 0)
+			]),
+			new THREE.LineBasicMaterial({ color: 0xfffa00, transparent: true, opacity: 0.22 })
 		);
-		scene.add(core);
-		const ring = new THREE.Mesh(
-			new THREE.RingGeometry(1.52, 1.545, 96),
-			new THREE.MeshBasicMaterial({ color: 0xfffa00, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
-		);
-		ring.rotation.x = -Math.PI / 2;
-		ring.position.y = -0.02;
-		scene.add(ring);
+		scene.add(baseLine);
 
-		let curRot = 0;
-		let targetRot = 0;
+		let focus = 0;
+		let focusTarget = 0;
 		let dragging = false;
 		let lastX = 0;
-		let lastInteract = 0;
-		let selected = 0;
+		let moved = 0;
 		let raf = 0;
 
-		const angleOf = (i: number) => -(i / N) * Math.PI * 2;
-
 		function select(i: number) {
-			selected = i;
-			targetRot = angleOf(i);
-			while (targetRot - curRot > Math.PI) targetRot -= Math.PI * 2;
-			while (targetRot - curRot < -Math.PI) targetRot += Math.PI * 2;
-			lastInteract = performance.now();
+			focusTarget = Math.max(0, Math.min(N - 1, i));
 		}
 
 		const elCanvas = renderer.domElement;
@@ -174,20 +149,25 @@
 		function onDown(e: PointerEvent) {
 			dragging = true;
 			lastX = e.clientX;
+			moved = 0;
 			elCanvas.style.cursor = "grabbing";
-			lastInteract = performance.now();
 		}
 		function onMove(e: PointerEvent) {
 			if (!dragging) return;
 			const dx = e.clientX - lastX;
 			lastX = e.clientX;
-			targetRot += dx * 0.006;
-			curRot += dx * 0.006;
-			lastInteract = performance.now();
+			moved += Math.abs(dx);
+			focus -= dx * 0.0045;
+			focus = Math.max(-0.6, Math.min(N - 1 + 0.6, focus));
+			focusTarget = focus;
 		}
 		function onUp() {
+			if (!dragging) return;
 			dragging = false;
 			elCanvas.style.cursor = "grab";
+			const snapped = Math.max(0, Math.min(N - 1, Math.round(focus)));
+			focusTarget = snapped;
+			if (moved > 8) onPick(snapped);
 		}
 		elCanvas.addEventListener("pointerdown", onDown);
 		window.addEventListener("pointermove", onMove);
@@ -197,6 +177,7 @@
 		const ray = new THREE.Raycaster();
 		const ndc = new THREE.Vector2();
 		function onClick(e: MouseEvent) {
+			if (moved > 8) return;
 			const r = elCanvas.getBoundingClientRect();
 			ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
 			ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
@@ -212,18 +193,18 @@
 
 		function tick() {
 			raf = requestAnimationFrame(tick);
-			const now = performance.now();
-			if (!dragging && now - lastInteract > 4200) targetRot += 0.0022;
-			curRot += (targetRot - curRot) * 0.085;
-			carousel.rotation.y = curRot;
-			core.rotation.y += 0.0045;
-			core.rotation.x += 0.0018;
-			ring.rotation.z += 0.0016;
+			focus += (focusTarget - focus) * 0.14;
+			const sel = Math.round(focus);
 			for (let i = 0; i < panels.length; i++) {
 				const p = panels[i];
-				const t = i === selected ? 1.1 : 1.0;
-				p.scale.x += (t - p.scale.x) * 0.12;
-				p.scale.y += (t - p.scale.y) * 0.12;
+				const d = Math.abs(i - focus);
+				p.position.x = (i - focus) * SPACING;
+				p.position.z = -Math.min(1.4, d * 0.42);
+				const s = 1 - Math.min(0.3, d * 0.16);
+				p.scale.x = s;
+				p.scale.y = s;
+				p.material.opacity = 1 - Math.min(0.72, d * 0.34);
+				p.renderOrder = i === sel ? 2 : 1;
 			}
 			renderer.render(scene, camera);
 		}
@@ -400,8 +381,8 @@
 
 		<div class="band">
 			<span class="flag">限时</span>
-			<span>轮盘陈列 · 拖动旋转 / 点击选中 · 全部开源免费</span>
-			<span class="hint">// DRAG TO ROTATE</span>
+			<span>横向切换 · 拖动滑动 / 点击选中 · 全部开源免费</span>
+			<span class="hint">// DRAG · CLICK</span>
 		</div>
 	</div>
 
