@@ -512,38 +512,17 @@
 		</td>
 	</tr>
 {/snippet}
-	<!-- 设备接入码管理 -->
+	<!-- 设备接入码管理（2026-10-25 废弃：已收归星集控管理端「班级管理」面板） -->
 	<Card class="mt-4">
 		<CardHeader>
-			<CardTitle class="flex items-center gap-2"><KeyRound class="size-4" /> 设备接入码</CardTitle>
+			<CardTitle class="flex items-center gap-2"><KeyRound class="size-4" /> 设备接入码（已停用）</CardTitle>
 			<CardDescription>
-				选一个真实班级生成接入码，发给教室机；在教室那台电脑上打开「星集控」，首次启动的引导页填入该码，
-				即自动完成绑定（班级 / 上报密钥 / 站点地址均为自动配置，无需手动填写）。
+				设备接入码（XJK-XXXX-XXX）已收归星集控统一管理。请到
+				<strong>星集控管理端 → 班级管理 → 接入码</strong> 生成按班 6 位绑定码，被控端首启引导页输入即完成绑定。
+				本站点不再生成新码；下方为历史存量码，仍可查看 / 作废。
 			</CardDescription>
 		</CardHeader>
 		<CardContent class="space-y-4">
-			<div class="flex items-end gap-3">
-				<div class="grid gap-1.5">
-					<Label for="act-class">目标班级</Label>
-					<select id="act-class" bind:value={actClassId} class="h-9 w-52 rounded-md border border-input bg-transparent px-2 text-sm outline-none">
-						<option value="">— 选择班级 —</option>
-						{#each devMap.classes || [] as c (c.class_id)}
-							<option value={c.class_id}>{c.name}</option>
-						{/each}
-					</select>
-				</div>
-				<div class="grid gap-1.5">
-					<Label for="act-hours">有效期(小时)</Label>
-					<Input id="act-hours" bind:value={actHours} type="number" class="w-24" />
-				</div>
-				<Button onclick={genActCode} disabled={actGenerating || !actClassId}>
-					{#if actGenerating}<Loader2 class="size-4 animate-spin" />{:else}<Plus class="size-4" />{/if}
-					生成接入码
-				</Button>
-			</div>
-			{#if !(devMap.classes || []).length}
-				<p class="text-xs text-muted-foreground">读不到真实班级列表 —— 请先确认集控服务端已接入（见集控面板首页的接入引导），否则生成的码会绑到不存在的班级。</p>
-			{/if}
 			{#if actCodes.length}
 				<div class="space-y-2">
 					{#each actCodes as c}
@@ -565,7 +544,7 @@
 					{/each}
 				</div>
 			{:else}
-				<p class="text-sm text-muted-foreground">还没有接入码 —— 给目标班级生成一个，发给教室机输入即可完成绑定</p>
+				<p class="text-sm text-muted-foreground">没有历史接入码。</p>
 			{/if}
 		</CardContent>
 	</Card>
