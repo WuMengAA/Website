@@ -228,7 +228,9 @@ export async function verifyLogin(identifier: string, password: string): Promise
 	if (!user) return null;
 	const hash = hashPassword(password, user.salt);
 	if (hash !== user.passwordHash) return null;
-	if (user.status !== "active") return null; // 停用 / 待验证均不可登录
+	// 停用(disabled)不可登录；待验证(pending)作为「未认证用户」允许登录，
+	// 其邮箱验证状态由 verified 字段表达，界面据此给出「去验证」引导。
+	if (user.status === "disabled") return null;
 	return user;
 }
 
@@ -318,14 +320,16 @@ export function validatePasswordStrength(password: string, username = ""): strin
 }
 
 /**
- * 开放注册：创建「待验证」账号（status=pending）。
- * 默认角色 user，无需管理员介入；验证邮箱或管理员批准后方可登录。
- * 注册门槛（敏感词 / 邮箱域名白名单 / 邀请码）默认全关，由环境变量开启。
+ * 开放注册：创建「未认证但立即可用」的账号（status=active, verified=0）。
+ * 默认角色 user，无需管理员介入，注册完直接能登录使用 —— 邮箱验证只是「锦上添花」
+ * 的可选增强（配了 SMTP 才有），不参与「能不能用」的判定。
  *
- * ⚠️ 2026-10-04 安全修复：**只有邮件渠道可用（mailEnabled）时才回传 verifyToken**。
- *    此前无条件回传，而无 SMTP 的生产环境（本站当前就是）里 verifyToken 被当
- *    激活钥匙直接回给客户端 → 「注册即自激活」，任何人可批量注册有效账号。
- *    现在无邮件渠道时注册成功但账号保持 pending，需管理员在后台激活，杜绝自激活。
+ * 信任模型（2026-10-25 与产品口径对齐）：
+ * - 未认证 = 可用，只是身份低一档（界面标「未认证用户」引导去验证）；
+ * - 邮箱验证若配置则发验证邮件、点了转正（verified=1）；没配就完全跳过；
+ * - verifyToken 始终只在服务端留存：有 SMTP 时由服务端拼好链接发邮件，
+ *   **绝不回传客户端**（避免把激活钥匙交给前端、被批量自激活）。这与 2026-10-04
+ *   安全修复的底线一致，只是把"无邮件就卡 pending 等管理员"放宽为"无邮件也能用"。
  */
 export async function registerUser(
 	username: string,
@@ -333,7 +337,7 @@ export async function registerUser(
 	password: string,
 	displayName?: string,
 	opts?: { inviteCode?: string }
-): Promise<{ ok: boolean; error?: string; verifyToken?: string; username?: string; email?: string; mailAvailable?: boolean }> {
+): Promise<{ ok: boolean; error?: string; username?: string; email?: string; mailAvailable?: boolean }> {
 	const name = (username || "").trim();
 	const mail = (email || "").trim();
 	const nick = (displayName || "").trim();
@@ -381,22 +385,20 @@ export async function registerUser(
 		.prepare(
 			`INSERT INTO users
 			  (username, display_name, email, avatar, bio, role, status, verified, verify_token, verify_token_expires, password_hash, salt, created_at, updated_at, login_count)
-			 VALUES (?, ?, ?, '', '', 'user', 'pending', 0, ?, ?, ?, ?, ?, ?, 0)`
+			 VALUES (?, ?, ?, '', '', 'user', 'active', 0, ?, ?, ?, ?, ?, ?, 0)`
 		)
 		.run(name, nick || name, mail, token, exp, hashPassword(password, salt), salt, ts, ts);
-	// 邮件渠道可用时立即发验证邮件（未配置 SMTP 则静默跳过，前端回显链接兜底）
+	// 邮件渠道可用时立即发验证邮件（链接由服务端拼好、token 不离开服务端）；
+	// 未配置 SMTP 则静默跳过 —— 不影响注册成功，用户仍以「未认证用户」身份可用。
 	const mailOk = mailEnabled();
 	if (mail && mailOk) {
 		await sendVerificationMail(mail, token).catch((e) => {
 			console.error("[mailer] 注册验证邮件发送失败：", e);
 		});
 	}
-	// 2026-10-04 安全修复：verifyToken 只在邮件渠道可用时才回传 —— 否则它等于
-	// "注册即自激活"的钥匙（无 SMTP 时任何人注册都能立刻激活，批量造号）。
-	// 无邮件渠道时账号保持 pending，由管理员在后台激活；前端据 mailAvailable 提示。
-	return mailOk
-		? { ok: true, verifyToken: token, username: name, email: mail }
-		: { ok: true, verifyToken: "", username: name, email: mail, mailAvailable: false };
+	// verifyToken 不回传客户端（保留在服务端供邮件链接使用 / 后台激活），
+	// 仅告知前端邮件渠道是否可用，由前端决定提示文案。
+	return { ok: true, username: name, email: mail, mailAvailable: mailOk };
 }
 
 /** 发送注册验证邮件（内部：拼链接 + 调 sendMail）。 */
@@ -436,9 +438,9 @@ export async function verifyEmail(token: string): Promise<{ ok: boolean; error?:
 }
 
 /** 重发验证令牌（按用户名或邮箱；复用同一套歧义安全识别，见 findUserByIdentifier）。
- * 2026-10-04 安全修复：与 registerUser 同规 —— 只有邮件渠道可用（mailEnabled）才回传
- * verifyToken；无 SMTP 时绝不把激活令牌交给客户端（否则 resend 就是第二条自激活通道）。 */
-export async function resendVerification(identifier: string): Promise<{ ok: boolean; error?: string; verifyToken?: string; email?: string; mailAvailable?: boolean }> {
+ * 邮箱验证是可选增强：有 SMTP 才真正发邮件，token 只在服务端留存、绝不回传客户端；
+ * 无邮件渠道时直接告知前端 mailAvailable=false，由前端提示「验证暂不可用（不影响使用）」。 */
+export async function resendVerification(identifier: string): Promise<{ ok: boolean; error?: string; email?: string; mailAvailable?: boolean }> {
 	const user = await findUserByIdentifier(identifier || "");
 	if (!user) return { ok: false, error: "账号不存在" };
 	if (user.status === "active" && user.verified) return { ok: false, error: "账号已激活" };
@@ -453,9 +455,7 @@ export async function resendVerification(identifier: string): Promise<{ ok: bool
 			console.error("[mailer] 重发验证邮件失败：", e);
 		});
 	}
-	return mailOk
-		? { ok: true, verifyToken: token, email: user.email, mailAvailable: true }
-		: { ok: true, verifyToken: "", email: user.email, mailAvailable: false };
+	return { ok: true, email: user.email, mailAvailable: mailOk };
 }
 
 export async function deleteUser(username: string): Promise<{ ok: boolean; error?: string }> {

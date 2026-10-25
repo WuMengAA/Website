@@ -73,7 +73,7 @@ import Seo from "$lib/components/Seo.svelte";
 					<ShieldCheck class="size-6" />
 				</div>
 				<h2 class="font-heading text-lg font-semibold">验证成功 🎉</h2>
-				<p class="text-sm text-muted-foreground">账号已激活，现在可以登录了。</p>
+				<p class="text-sm text-muted-foreground">邮箱已验证，你的身份已升级为「已认证用户」，现在可以正常使用全部功能。</p>
 				<Button href="/admin/login" class="w-full">前往登录</Button>
 			{:else}
 				<div class="mx-auto flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">

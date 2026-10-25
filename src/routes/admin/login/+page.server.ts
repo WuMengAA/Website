@@ -50,11 +50,8 @@ export const actions = {
 		const user = await verifyLogin(form.data.username, form.data.password);
 		if (!user) {
 			await recordLoginFailure(form.data.username, ip);
-			// 待验证账号：给出可操作提示，而不是笼统的「用户名或密码错误」。
-			const pendingUser = await getUser(form.data.username);
-			if (pendingUser && pendingUser.status === "pending") {
-				return message(form, "账号待验证：请先完成邮箱验证再登录", { status: 403 });
-			}
+			// 待验证(pending)用户现在允许登录（身份=未认证用户），此处仅处理密码错误；
+			// 停用账号由 verifyLogin 返回 null 一并归到「用户名或密码错误」。
 			return message(form, "用户名或密码错误", { status: 401 });
 		}
 

@@ -59,11 +59,8 @@ export async function POST(event: RequestEvent) {
 		if (!user) {
 			await recordLoginFailure(username, meta.ip);
 			recordActivity({ username, action: "login", detail: "密码错误（失败计数）", ip: meta.ip, userAgent: meta.userAgent });
-			// 区分「待验证」与「密码错误」：pending 用户给出可操作提示，其余统一按凭证错误处理。
-			const pendingUser = await getUser(username);
-			if (pendingUser && pendingUser.status === "pending") {
-				return json({ error: "账号待验证：请先点击邮箱验证链接完成激活" }, { status: 403 });
-			}
+			// 待验证(pending)用户现在允许登录（身份=未认证用户），故这里不再单独拦截；
+			// 仅「密码错误」与「停用」两种情形走到此处（停用由 verifyLogin 返回 null）。
 			return json({ error: "用户名或密码错误" }, { status: 401 });
 		}
 		// 登录时限（天）：默认 30，可选 60/120，过期需重新登录（2026-09-27 安全改造）。
@@ -83,7 +80,15 @@ export async function POST(event: RequestEvent) {
 		recordActivity({ userId: user.id, username: user.username, action: "login", ip: meta.ip, userAgent: meta.userAgent });
 		return json({
 			ok: true,
-			user: { username: user.username, displayName: user.displayName, role: user.role, avatar: user.avatar || "" }
+			user: {
+				username: user.username,
+				displayName: user.displayName,
+				role: user.role,
+				avatar: user.avatar || "",
+				// 邮箱验证状态：true=已认证；false=未认证用户（可登录，界面引导去验证）
+				verified: user.verified === true,
+				status: user.status
+			}
 		});
 	}
 
@@ -117,16 +122,16 @@ export async function POST(event: RequestEvent) {
 
 		recordActivity({
 			userId: 0, username: result.username || "", action: "user_register",
-			detail: "开放注册（待验证）", ip: meta.ip, userAgent: meta.userAgent
+			detail: "开放注册（未认证，立即可用）", ip: meta.ip, userAgent: meta.userAgent
 		});
-		// 2026-10-04 安全修复：verifyToken 只在邮件渠道可用时回传（见 registerUser 注释）。
-		// 无 SMTP 时账号保持 pending，需管理员激活 —— 绝不把激活钥匙发给客户端。
+		// 注册即 active + 未认证：账号立即可用，邮箱验证为可选增强。
+		// verifyToken 不回传客户端（始终在服务端留存，供邮件链接 / 后台激活使用），
+		// 仅告知前端邮件渠道是否可用（mailAvailable），由前端决定提示。
 		return json({
 			ok: true,
 			username: result.username,
 			email: result.email,
-			mailAvailable: result.mailAvailable !== false,
-			...(result.mailAvailable !== false && result.verifyToken ? { verifyToken: result.verifyToken } : {})
+			mailAvailable: result.mailAvailable !== false
 		});
 	}
 
@@ -143,12 +148,11 @@ export async function POST(event: RequestEvent) {
 			userId: 0, username: body.identifier || "", action: "user_verify_resend",
 			ip: meta.ip, userAgent: meta.userAgent
 		});
-		// 2026-10-04 安全修复：无邮件渠道时同样不回传 verifyToken（防 resend 自激活）。
+		// 邮箱验证为可选增强：仅回传 mailAvailable，verifyToken 始终不离开服务端。
 		return json({
 			ok: true,
 			email: result.email,
-			mailAvailable: result.mailAvailable !== false,
-			...(result.mailAvailable !== false && result.verifyToken ? { verifyToken: result.verifyToken } : {})
+			mailAvailable: result.mailAvailable !== false
 		});
 	}
 

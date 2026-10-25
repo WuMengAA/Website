@@ -23,6 +23,10 @@
 	// 落点是 null 时保持原行为（服务端按权限分流到 /admin 或 /admin/console）。
 	const returnTo = safeReturnTo(page.url.searchParams.get("returnTo"));
 
+	// 从注册页「稍后验证」跳转而来（?unverified=1）：提示将以「未认证用户」身份登录，
+	// 邮箱验证可在登录后的账号页完成。
+	const unverifiedHint = page.url.searchParams.get("unverified") === "1";
+
 	// 不使用 formsnap：其 Field 组件在 SSR 期依赖 form.current.errors 内部 store，
 	// 而当前 sveltekit-superforms 版本 form.current 返回表单数据对象，导致 500。
 	// 改用 superForm 原生 API（errors/enhance/submitting 均为 SSR 安全的 Svelte store）。
@@ -117,6 +121,12 @@
 		</div>
 
 		<div class="tri"><i></i><i></i><i></i></div>
+
+		{#if unverifiedHint}
+			<div class="unverified-hint">
+				你将以「未认证用户」身份登录（注册时选择了稍后验证）。登录后可在「账号」页完成邮箱验证。
+			</div>
+		{/if}
 
 		<form method="POST" use:enhance class="form">
 			<div class="field">
@@ -325,6 +335,15 @@
 		margin: 6px 0 0;
 		font-size: 12px;
 		color: var(--destructive);
+	}
+	.unverified-hint {
+		margin: 0 0 14px;
+		border-left: 2px solid var(--primary);
+		background: color-mix(in srgb, var(--primary) 10%, transparent);
+		color: var(--foreground);
+		padding: 8px 10px;
+		font-size: 12.5px;
+		line-height: 1.6;
 	}
 	.msg {
 		margin: 0;

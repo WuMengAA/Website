@@ -78,6 +78,9 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		avatar,
 		picture: avatar,
 		role: (await u).role,
+		// 邮箱验证状态：false=未认证用户（可登录，但建议去验证）
+		verified: (await u).verified === true,
+		email_verified: (await u).verified === true,
 		issuer: base
 	});
 };

@@ -1,6 +1,6 @@
 import { json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
-import { verifyToken, getUser, updateProfile, sanitizeAvatar, verifyLogin } from "$lib/server/auth.js";
+import { verifyToken, getUser, updateProfile, sanitizeAvatar, verifyLogin, mailEnabled } from "$lib/server/auth.js";
 import { recordActivity } from "$lib/server/activity.js";
 import { syncUserUpdateToCims } from "$lib/server/cims-account.js";
 import { listStelarithClasses, type StelarithClass } from "$lib/server/stelarith/classes.js";
@@ -103,6 +103,12 @@ export async function GET(event: RequestEvent) {
 		bio: user.bio || "",
 		avatar: sanitizeAvatar(user.avatar),
 		role: user.role,
+		// 邮箱验证状态：verified=false 即「未认证用户」（可登录，但界面应引导去验证）
+		verified: user.verified === true,
+		status: user.status,
+		// 邮件服务是否可用（服务端能力，非用户属性）：决定账号页是否展示「去验证邮箱」入口。
+		// 未配置 SMTP 时为 false，界面改显「验证暂不可用（不影响使用）」。
+		mailAvailable: mailEnabled(),
 		className: user.className || "",
 		gradeName: user.gradeName || "",
 		xp: user.xp ?? 0,

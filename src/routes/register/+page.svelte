@@ -15,9 +15,9 @@ import Seo from "$lib/components/Seo.svelte";
 	let inviteCode = $state("");
 	let submitting = $state(false);
 
-	// 注册成功后的验证状态：成功即展示验证链接（本地无 SMTP 时由服务端回传令牌拼链接）。
+	// 注册成功后的状态：账号立即可用（未认证身份），邮箱验证为可选增强。
 	let done = $state(false);
-	let verifyUrl = $state("");
+	let mailAvailable = $state(false);
 	let errMsg = $state("");
 
 	async function submit() {
@@ -50,12 +50,11 @@ import Seo from "$lib/components/Seo.svelte";
 			});
 			const d = await res.json();
 			if (res.ok && d.ok) {
-				// 服务端回传 verifyToken（本地无 SMTP 环境）；拼出验证链接供用户打开。
-				if (d.verifyToken) {
-					verifyUrl = `${location.origin}/verify?token=${encodeURIComponent(d.verifyToken)}`;
-				}
+				// 邮箱验证为可选增强：仅据服务端邮件渠道是否可用决定提示文案，
+				// 验证链接由服务端拼好发到邮箱（token 不离开服务端），前端不持有。
+				mailAvailable = d.mailAvailable === true;
 				done = true;
-				toast.success("注册成功，请完成邮箱验证");
+				toast.success("注册成功，可直接登录");
 			} else {
 				errMsg = d.error || "注册失败，请稍后重试";
 			}
@@ -85,18 +84,16 @@ import Seo from "$lib/components/Seo.svelte";
 				<div class="mx-auto flex size-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
 					<ShieldCheck class="size-6" />
 				</div>
-				<h2 class="font-heading text-lg font-semibold">注册成功，还差最后一步</h2>
-				<p class="text-sm text-muted-foreground">请打开下方验证链接完成邮箱验证，验证后即可登录。</p>
-				{#if verifyUrl}
-					<div class="rounded-lg border border-border/60 bg-muted/40 p-3">
-						<a href={verifyUrl} class="break-all text-sm text-primary underline underline-offset-4">{verifyUrl}</a>
-					</div>
-					<Button href={verifyUrl} class="w-full">
-						前往验证
-					</Button>
+				<h2 class="font-heading text-lg font-semibold">注册成功，可直接登录</h2>
+				{#if mailAvailable}
+					<p class="text-sm text-muted-foreground">验证邮件已发送至你的邮箱（可选，不验证也能正常使用，仅作为「未认证用户」）。</p>
 				{:else}
-					<p class="text-sm text-muted-foreground">验证链接将发送至你的邮箱。</p>
+					<p class="text-sm text-muted-foreground">账号已创建，可直接登录使用。当前环境未配置邮件服务，邮箱验证暂不可用——不影响正常使用，你将以「未认证用户」身份登录，验证可在日后配置邮件后于账号页完成。</p>
 				{/if}
+				<!-- 注册即 active+未认证：直接去登录即可，无需先验证邮箱 -->
+				<Button class="w-full" href="/admin/login?unverified=1">
+					去登录（以未认证用户身份）
+				</Button>
 			</div>
 		{:else}
 			<form onsubmit={(e) => { e.preventDefault(); submit(); }} class="space-y-4 rounded-xl border border-border/60 bg-card p-6">

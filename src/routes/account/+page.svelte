@@ -15,6 +15,8 @@
 		username: string; displayName: string; email: string; bio: string; avatar: string;
 		role: string; createdAt: string; lastLoginAt?: string | null; loginCount?: number;
 		xp?: number;
+		verified?: boolean; status?: string;
+		mailAvailable?: boolean;
 	}
 	let me = $state<Me | null>(null);
 	let loading = $state(true);
@@ -118,6 +120,35 @@
 		window.location.href = "/account";
 	}
 
+	// 未认证用户：发起邮箱验证（复用 resend_verification；验证链接由服务端发到邮箱，
+	// token 不离开服务端，前端只据 mailAvailable 决定提示）。
+	let verifying = $state(false);
+	let verifyMsg = $state("");
+	async function sendVerifyMail() {
+		verifying = true;
+		verifyMsg = "";
+		try {
+			const res = await fetch("/api/auth", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action: "resend_verification", identifier: me?.username || "" })
+			});
+			const d = await res.json();
+			if (res.ok && d.ok) {
+				if (d.mailAvailable) {
+					verifyMsg = "验证邮件已发送至你的邮箱，请查收并点击完成验证（不验证也能正常使用）。";
+				} else {
+					verifyMsg = "当前环境未配置邮件服务，邮箱验证暂不可用——不影响正常使用。";
+				}
+			} else {
+				verifyMsg = d.error || "发送失败，请稍后再试";
+			}
+		} catch {
+			verifyMsg = "网络错误，请稍后再试";
+		}
+		verifying = false;
+	}
+
 	onMount(load);
 </script>
 
@@ -154,12 +185,37 @@
 				<div class="flex items-center gap-2">
 					<span class="truncate font-heading text-lg font-medium">{me.displayName || me.username}</span>
 					<Badge variant={me.role === "admin" ? "default" : "outline"}>{ROLE_LABELS[me.role as Role] || me.role}</Badge>
+					{#if me.verified}
+						<Badge variant="outline" class="border-emerald-500/50 text-emerald-600">已认证</Badge>
+					{:else}
+						<Badge variant="outline" class="border-amber-500/50 text-amber-600">未认证用户</Badge>
+					{/if}
 				</div>
 				<p class="inline-flex min-w-0 flex-wrap items-center gap-1 text-xs text-muted-foreground"><ShieldCheck class="size-3 shrink-0" /> <span class="truncate">@{me.username}</span> · <CalendarDays class="size-3 shrink-0" /> 注册于 {me.createdAt?.slice(0, 10)}{#if me.loginCount} · 登录 {me.loginCount} 次{/if}</p>
 			</div>
-			<Button variant="ghost" size="sm" class="ml-auto shrink-0 text-muted-foreground hover:text-destructive" onclick={logout}><LogOut class="h-4 w-4 mr-1" /> 退出</Button>
-		</div>
+		<Button variant="ghost" size="sm" class="ml-auto shrink-0 text-muted-foreground hover:text-destructive" onclick={logout}><LogOut class="h-4 w-4 mr-1" /> 退出</Button>
 	</div>
+</div>
+
+<!-- 邮箱验证状态（未认证用户引导；邮箱验证为可选增强） -->
+{#if !me.verified}
+	<div class="flex flex-col gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-6">
+		<div class="flex items-center gap-2">
+			<Badge variant="outline" class="border-amber-500/50 text-amber-600">未认证用户</Badge>
+			<span class="text-sm text-muted-foreground">邮箱尚未验证，建议完成验证以保障账号安全。</span>
+		</div>
+		{#if me.mailAvailable}
+			<div class="flex flex-wrap items-center gap-3">
+				<Button onclick={sendVerifyMail} disabled={verifying}>{verifying ? "发送中..." : "去验证邮箱"}</Button>
+				{#if verifyMsg}
+					<p class="min-w-0 flex-1 break-all text-sm text-muted-foreground">{verifyMsg}</p>
+				{/if}
+			</div>
+		{:else}
+			<p class="text-sm text-muted-foreground">当前环境未配置邮件服务，邮箱验证暂不可用。这不影响你正常使用账号——你始终以「未认证用户」身份登录，验证功能会在日后配置邮件后于此处开放。</p>
+		{/if}
+	</div>
+{/if}
 
 	<!-- Profile -->
 	<div class="flex flex-col gap-4 rounded-xl border border-border/60 bg-card p-6">

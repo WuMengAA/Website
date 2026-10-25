@@ -64,6 +64,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		ticket: r.ticket,
 		exp: r.exp,
 		ttlMs,
-		user: u.username
+		user: u.username,
+		// 邮箱验证状态：false=未认证用户（可登录管理端，但界面应标出未认证）
+		verified: u.verified === true
 	});
 };
