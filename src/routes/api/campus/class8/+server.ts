@@ -17,6 +17,7 @@ import {
   listScoresByExam, saveScoresBatch, exportAll, importAll, deleteExam, importTableRows
 } from "$lib/server/class8/class8-service.js";
 import { seedClass8IfEmpty, ensureRealClass8Data, ensureSportsTimeline } from "$lib/server/class8/class8-seed.js";
+import { gatePassed } from "$lib/server/class8/class8-auth.js";
 
 async function resolveUser(event: RequestEvent) {
   const cookieToken = event.cookies.get("admin_token");
@@ -30,6 +31,8 @@ async function resolveUser(event: RequestEvent) {
 }
 
 export async function GET(event: RequestEvent) {
+  // 门禁：与页面同钥 —— 未过班级认证的请求不给快照（含全员姓名）
+  if (!gatePassed(event.cookies)) return json({ error: "需要班级访问令牌，请先通过班级认证" }, { status: 401 });
   await seedClass8IfEmpty();
   await ensureRealClass8Data();
   await ensureSportsTimeline();
@@ -53,6 +56,7 @@ export async function GET(event: RequestEvent) {
 }
 
 export async function POST(event: RequestEvent) {
+  if (!gatePassed(event.cookies)) return json({ error: "需要班级访问令牌，请先通过班级认证" }, { status: 401 });
   await seedClass8IfEmpty();
   await ensureRealClass8Data();
   await ensureSportsTimeline();

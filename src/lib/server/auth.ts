@@ -18,6 +18,9 @@ import { getDb, hashPassword as _hashPassword, nowIso } from "./db.js";
 import { sendMail, mailEnabled } from "./mailer.js";
 import { env } from "$env/dynamic/private";
 
+// 转出给子模块（如 /api/me 的 mailAvailable 探测）：mailer 配置的单一真源仍在 mailer.ts。
+export { mailEnabled };
+
 export interface User {
 	/** 数据库自增主键（旧 JSON 版本没有该字段，新代码按可选处理）。 */
 	id?: number;

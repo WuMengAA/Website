@@ -17,7 +17,7 @@ const SKIP_PREFIX = ["/api", "/_app", "/uploads", "/favicon", "/rss.xml", "/.wel
  * 其余公开页面（博客、项目、教程、列表页…）对匿名访客是确定性的，
  * 可以放心给公共缓存，减少重复渲染压力。
  */
-const NO_PUBLIC_CACHE = ["/admin", "/account", "/api", "/verify", "/register", "/u/"];
+const NO_PUBLIC_CACHE = ["/admin", "/account", "/api", "/verify", "/register", "/u/", "/campus/2028/class8"];
 
 /**
  * /admin 前缀下的**静态资源**白名单：不参与登录态校验，最先判定（先于登录校验与
@@ -89,6 +89,19 @@ export async function handle({ event, resolve }) {
 	}
 
 	const response = await resolve(event);
+
+	// ── 后台 / API / class8 班级区一律禁止缓存 ─────────────────────────
+	// 否则浏览器/CDN 缓存页内嵌数据，会出现「保存成功但刷新看到旧值」的假象；
+	// class8 是门禁内容（令牌 cookie 区分访客），更不能进任何共享缓存。
+	// （Cloudflare 默认对动态路由是 DYNAMIC，这里再对客户端兜底加 no-store。）
+	if (
+		url.pathname.startsWith("/admin") ||
+		url.pathname.startsWith("/api") ||
+		url.pathname.startsWith("/campus/2028/class8")
+	) {
+		response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+		response.headers.set("Pragma", "no-cache");
+	}
 
 	// ── 安全响应头（2026-09-27 安全网补强）──────────────────────────────
 	// 全局下发：CSP 防 XSS 注入 / X-Frame-Options 防点击劫持 /

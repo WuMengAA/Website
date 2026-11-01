@@ -16,7 +16,45 @@
   const medals = ["🥇", "🥈", "🥉", "4", "5", "6", "7", "8"];
   const medalOf = (i: number) => medals[i] ?? String(i + 1);
   const clsOf = (i: number) => (i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "");
+
+  // ── 05 · 班级瞬间（2026-10-28 新增）：镜头里的日常，按场景归四类 ──
+  type Photo = { src: string; cap: string };
+  const GALLERY: { title: string; photos: Photo[] }[] = [
+    {
+      title: "教室与学习",
+      photos: [
+        { src: "/campus/2028/class8/daily/IMG_20261022_170457.jpg", cap: "晚自习的教室——黑板、电子屏与堆满书的课桌" },
+        { src: "/campus/2028/class8/daily/IMG_20261023_080638.jpg", cap: "窗上的 Ciallo 贴纸，窗外是深秋" },
+        { src: "/campus/2028/class8/daily/IMG_20261022_170523.jpg", cap: "「熬过无声的坚持，终迎如愿的曙光」" }
+      ]
+    },
+    {
+      title: "板报与小组",
+      photos: [
+        { src: "/campus/2028/class8/daily/IMG_20261022_170413.jpg", cap: "「物化帝」锦旗与元旦晚会筹备白板" },
+        { src: "/campus/2028/class8/daily/IMG_20261023_080653.jpg", cap: "窗下的小组手绘板报" }
+      ]
+    },
+    {
+      title: "劳动值日",
+      photos: [
+        { src: "/campus/2028/class8/daily/IMG_20261022_170117.jpg", cap: "秋季卫生大扫除 · 清扫人行道落叶" },
+        { src: "/campus/2028/class8/daily/IMG_20261022_170123.jpg", cap: "落叶装运 ·「自我监督」的垃圾桶也来帮忙" },
+        { src: "/campus/2028/class8/daily/IMG_20261022_170204.jpg", cap: "协作清运，一桶接一桶" }
+      ]
+    },
+    {
+      title: "校园内外",
+      photos: [
+        { src: "/campus/2028/class8/daily/IMG_20261023_110324.jpg", cap: "校园林荫道" },
+        { src: "/campus/2028/class8/daily/IMG_20261023_110240.jpg", cap: "校外见闻 · 路过施工现场" }
+      ]
+    }
+  ];
+  let viewing = $state<Photo | null>(null);
 </script>
+
+<svelte:window onkeydown={(e) => { if (e.key === "Escape") viewing = null; }} />
 
 <div class="board">
   <div class="pg-head">
@@ -96,7 +134,36 @@
       <div use:reveal class="reveal fact"><b>{(d?.groups ?? []).length} 组</b><span>学习小组</span></div>
       <div use:reveal class="reveal fact"><b>{topRank ? topRank.group_name + " · " + topRank.avg.toFixed(2) : "—"}</b><span>最高分小组</span></div>
     </div>
+  </section>
+
+  <section class="sec">
+    <div use:reveal class="reveal sec-head">
+      <span class="sec-no">05 · 班级瞬间</span>
+      <h3>镜头里的八班日常</h3>
+    </div>
+    {#each GALLERY as g (g.title)}
+      <div class="gal-cat">
+        <span class="gal-cat-name">{g.title}</span>
+        <div class="gal-grid">
+          {#each g.photos as p, i (p.src)}
+            <button type="button" use:reveal class="reveal-wipe gal-item" style="--reveal-delay:{i + 1}" onclick={() => (viewing = p)} aria-label={p.cap}>
+              <img src={p.src} alt={p.cap} loading="lazy" />
+              <span class="gal-cap">{p.cap}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/each}
   </section></div>
+
+{#if viewing}
+  <div class="gal-lightbox" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) viewing = null; }}>
+    <figure>
+      <img src={viewing.src} alt={viewing.cap} />
+      <figcaption>{viewing.cap}</figcaption>
+    </figure>
+  </div>
+{/if}
 <style>
   .pg-head { display: flex; flex-direction: column; gap: .7rem; margin-bottom: 2rem; max-width: 52ch; }
   .eyebrow { display: inline-flex; align-items: center; gap: .6rem; font-size: .72rem; letter-spacing: .22em; text-transform: uppercase; color: #8a8178; font-weight: 500; }
@@ -146,6 +213,19 @@
   .fact { display: flex; flex-direction: column; gap: .15rem; padding: .9rem 1.1rem; background: #fffdf7; border: 1px solid rgba(42,38,32,.08); border-left: 3px solid #c8542e; border-radius: .6rem; }
   .fact b { font-family: var(--font-heading); font-weight: 700; font-size: 1.1rem; }
   .fact span { font-size: .76rem; color: #8a8178; }
+
+  /* ── 05 · 班级瞬间 ── */
+  .gal-cat { margin-top: 1.2rem; }
+  .gal-cat-name { display: inline-block; font-size: .8rem; font-weight: 700; letter-spacing: .12em; color: #4a443c; background: #f3ecdd; border-radius: 999px; padding: .22rem .8rem; margin-bottom: .7rem; }
+  .gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: .9rem; }
+  .gal-item { position: relative; display: block; padding: 0; border: 1px solid rgba(42,38,32,.12); border-radius: .9rem; overflow: hidden; background: #fffdf7; cursor: zoom-in; transition: transform .5s var(--ease-expo), box-shadow .5s var(--ease-expo), border-color .5s var(--ease-expo); }
+  .gal-item:hover { transform: translateY(-3px); border-color: #c8542e; box-shadow: 0 16px 32px -22px rgba(42,38,32,.35); }
+  .gal-item img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+  .gal-cap { position: absolute; inset: auto 0 0 0; padding: 1.4rem .7rem .55rem; font-size: .74rem; line-height: 1.4; color: #fffdf7; background: linear-gradient(transparent, rgba(20,16,10,.72)); text-align: left; }
+  .gal-lightbox { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 2rem; background: rgba(20,16,10,.82); cursor: zoom-out; }
+  .gal-lightbox figure { margin: 0; max-width: min(64rem, 100%); max-height: 100%; display: flex; flex-direction: column; gap: .5rem; }
+  .gal-lightbox img { max-width: 100%; max-height: 78vh; object-fit: contain; border-radius: .6rem; }
+  .gal-lightbox figcaption { color: #fffdf7; font-size: .85rem; text-align: center; }
 
   @media (max-width: 720px) {
     .rank-row { grid-template-columns: 1.8rem 6rem 1fr 3.6rem; gap: .45rem; }
