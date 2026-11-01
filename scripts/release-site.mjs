@@ -241,6 +241,18 @@ function doBuild(maxAttempts = 4) {
 			timeout: 900000
 		});
 		const out = `${r.stdout || ""}${r.stderr || ""}`;
+		// 日志轮转（2026-11-01）：append 模式会让单文件无限增长 —— 实测已长到 34 MB。
+		// 超过 32 MB 先改名归档，下次 append 自动新建，避免日志目录里躺一个几十 MB 的巨文件。
+		const MAX_LOG_BYTES = 32 * 1024 * 1024;
+		try {
+			if (fs.statSync(BUILD_LOG).size > MAX_LOG_BYTES) {
+				const archived = `${BUILD_LOG}.${stamp()}`;
+				fs.renameSync(BUILD_LOG, archived);
+				log(`构建日志超过 32 MB，已归档为 ${path.basename(archived)}`);
+			}
+		} catch {
+			/* 文件不存在 → 首次构建，无需轮转 */
+		}
 		fs.appendFileSync(
 			BUILD_LOG,
 			`\n\n===== attempt ${i} @ ${ts()}  exit=${r.status} =====\n${out}`
