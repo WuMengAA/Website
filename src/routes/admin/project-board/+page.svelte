@@ -94,11 +94,17 @@
 		lastUpload = null;
 		msg = "";
 		err = "";
+		try { localStorage.setItem("stelarith:pb:slug", s); } catch { /* 忽略 */ }
 		void loadIssues();
 	}
 
 	onMount(() => {
-		if (slug) selectProject(slug);
+		let initial = data.projects[0]?.slug ?? "";
+		try {
+			const saved = localStorage.getItem("stelarith:pb:slug");
+			if (saved && data.projects.some((p: any) => p.slug === saved)) initial = saved;
+		} catch { /* localStorage 不可用时忽略，退回首项 */ }
+		if (initial) selectProject(initial);
 	});
 
 	function flash(text: string) {
@@ -141,7 +147,12 @@
 	// ── 保存仓库绑定 ──
 	async function saveRepo() {
 		const j = await call("saveBoard", { repo: repoInput.trim(), tagline: tagline.trim() });
-		if (j) flash("已保存仓库绑定");
+		if (j?.board) {
+			// 立即把输入框回显为规范化后的存储值（如去掉 https:// 前缀），
+			// 让「保存生效」在刷新前就以肉眼可见的方式被确认，避免误以为没存上。
+			repoInput = j.board.repo;
+			flash("已保存仓库绑定：" + j.board.repo);
+		}
 	}
 
 	// ── 同步 ──
@@ -365,7 +376,7 @@
 				class="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors {slug === p.slug
 					? 'bg-primary/15 text-primary'
 					: 'hover:bg-muted/60'}"
-				onclick={() => (slug = p.slug)}
+				onclick={() => selectProject(p.slug)}
 			>
 				<span class="min-w-0 flex-1 truncate">{p.title}</span>
 				{#if b?.repo}
@@ -395,7 +406,7 @@
 					{/if}
 				</div>
 				<div class="flex flex-wrap items-center gap-2">
-					<Input bind:value={repoInput} placeholder="owner/name 或 https://github.com/owner/name" class="h-9 min-w-[280px] flex-1" />
+					<Input bind:value={repoInput} placeholder="owner/name、github.com/owner/name 或 https 链接" class="h-9 min-w-[280px] flex-1" />
 					<Button size="sm" disabled={busy} onclick={saveRepo}><Save class="size-3.5 mr-1" />保存</Button>
 					<Button size="sm" variant="outline" disabled={busy || !repoInput.trim()} onclick={() => syncOne(false)}>
 						<RefreshCw class="size-3.5 mr-1" />同步此项目

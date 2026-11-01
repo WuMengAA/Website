@@ -227,8 +227,21 @@ export function parseRepoUrl(input: string | null | undefined): { owner: string;
 	const scp = raw.match(/^[\w.+-]+@[^:]+:([\w.-]+)\/([\w.-]+?)(?:\.git)?$/);
 	if (scp) return { owner: scp[1], name: scp[2] };
 
+	// 「带域名但缺协议」的写法：github.com/owner/name、gh.xxx.com/owner/name 等。
+	// 从地址栏复制或口头转述时极常漏掉 https://，若直接交给 new URL 会因无 scheme
+	// 抛错 → 被误判成「地址无法识别」。这恰是后台「GitHub 地址改不了」的根因。
+	// 仅当「第一段形如主机名」（含点，或 localhost / *.github.*）时才补 https://，
+	// 以免把裸 owner/name 误当成 host；裸形式已在上面由正则兜底，不会走到这里。
+	let urlStr = raw;
+	if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(urlStr)) {
+		const firstSeg = urlStr.split("/")[0] ?? "";
+		if (firstSeg.includes(".") || /^(localhost|[\w-]+\.github\.(?:io|com))$/i.test(firstSeg)) {
+			urlStr = "https://" + urlStr;
+		}
+	}
+
 	try {
-		const u = new URL(raw);
+		const u = new URL(urlStr);
 		const parts = u.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
 		if (parts.length >= 2) {
 			return { owner: parts[0], name: parts[1].replace(/\.git$/, "") };
