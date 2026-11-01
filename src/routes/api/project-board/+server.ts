@@ -30,14 +30,18 @@ import {
 } from "$lib/server/project-board.js";
 import { hasGithubToken, githubHealth, fetchRateLimit, parseRepoUrl, GithubError } from "$lib/server/github.js";
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, request }) => {
 	const slug = url.searchParams.get("slug");
 	if (!slug) {
+		const user = await getApiUser(request);
 		return json({
 			boards: getBoards(),
-			// 附带同步链路体检（配额、是否在冷却、缓存条数），
-			// 让后台能直接回答「为什么同步又失败了」，而不是让人去翻服务端日志。
-			github: { hasToken: hasGithubToken(), ...githubHealth() }
+			// 同步链路体检（配额、是否在冷却、缓存条数）**只给管理员**：
+			// 它回答的是「为什么同步又失败了」，属运维内部状态；匿名访客不该知道
+			// 站点配没配 GITHUB_TOKEN、配额还剩多少 —— 那是给攻击者递情报，不是公开数据。
+			...(user && user.role === "admin"
+				? { github: { hasToken: hasGithubToken(), ...githubHealth() } }
+				: {})
 		});
 	}
 	const board = getBoard(slug);
