@@ -15,7 +15,7 @@
       "name": "VoiceHub 校园广播",
       "description": "VoiceHub（点歌/广播系统）请求使用你的 Stelarith 账号登录",
       "secretEnv": "OAUTH_VOICEHUB_SECRET",
-      "redirectUris": ["https://voicehub.245959623.xyz/api/auth/oauth2/callback"],
+      "redirectUris": ["https://voicehub-2026.netlify.app/api/auth/oauth2/callback"],
       "scopes": ["profile", "email"],
       "defaultScope": "profile"
     }

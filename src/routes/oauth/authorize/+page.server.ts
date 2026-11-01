@@ -7,9 +7,11 @@
  * 多客户端：client_id / 回拨地址 / 密钥都在 oauth-clients.ts 里判定，
  * 本文件只负责「拿到一个合法的 client 记录 → 走登录或同意」。
  *
- * 关于免登：主站 www.245959623.xyz 与 voicehub.245959623.xyz 同属 245959623.xyz，
- * 对浏览器而言是 same-site —— admin_token 虽然是 SameSite=Strict，
- * 从 VoiceHub 顶级跳转过来仍会带上，所以已登录用户会直接看到同意页。
+ * 关于免登：VoiceHub 已迁到独立域 voicehub-2026.netlify.app，与主站 www.245959623.xyz
+ * 是 cross-site。admin_token 因此用 SameSite=Lax（而非 Strict）：跨站「顶级 GET」跳转
+ * （VoiceHub 重定向到本授权端点正是这种）仍会带上会话 Cookie，已登录用户直接看到同意页；
+ * 跨站 POST / 子资源仍被 Lax 拦下，保留 CSRF 防护。若 VoiceHub 改用 iframe/popup 等非顶级
+ * 跳转，则需升级到 SameSite=None;Secure（届时须确认全站 CSRF 兜底到位）。
  */
 
 import type { PageServerLoad, Actions } from "./$types";
@@ -63,7 +65,7 @@ function cookieOptions() {
 	return {
 		path: "/",
 		httpOnly: true,
-		sameSite: "strict" as const,
+		sameSite: "lax" as const,
 		// 与 /api/auth 登录保持同一口径（原来这里写死 false，会把已经在用 Secure 的
 		// 生产会话降级成非 Secure Cookie，等于从授权页登录一次就把安全性拉低一档）。
 		secure: process.env.COOKIE_SECURE === "true",

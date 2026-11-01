@@ -409,7 +409,7 @@ export function publicBaseUrl(): string {
  * 客户端只要 `avatar` 字段非空就自然用上，零配置。
  *
  * 返回绝对值：客户端会以「自己的域名」为基准解析相对路径，给 `/avatars/default.svg`
- * 会被拼成 https://voicehub.245959623.xyz/avatars/default.svg，必然 404。
+ * 会被拼成 https://voicehub-2026.netlify.app/avatars/default.svg，必然 404。
  */
 export function defaultAvatarUrl(): string {
 	return `${publicBaseUrl()}/avatars/default.svg`;

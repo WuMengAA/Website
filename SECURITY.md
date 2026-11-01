@@ -21,7 +21,7 @@
 ## 安全设计要点
 
 - **密码存储**：scrypt 加盐哈希（每用户随机 salt），绝不明文存储
-- **会话**：HttpOnly + SameSite=strict Cookie
+- **会话**：HttpOnly + SameSite=lax Cookie（cross-site OAuth SSO 需要；保留 Lax 对跨站 POST 的 CSRF 防护）
 - **多用户隔离**：editor 角色只能管理 owner 为自己的内容；admin 可管理全部
 - **备份**：可 AES-256-GCM 加密导出（密码派生密钥 + 随机 salt/iv）
 - **媒体上传**：扩展名白名单 + 20MB 大小限制

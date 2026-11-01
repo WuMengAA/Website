@@ -69,7 +69,7 @@ export async function POST(event: RequestEvent) {
 		cookies.set("admin_token", token, {
 			path: "/",
 			httpOnly: true,
-			sameSite: "strict",
+			sameSite: "lax",
 			// 跟随 COOKIE_SECURE：HTTPS 生产环境置 true（标记 Secure，防中间人）；
 			// 本地 HTTP 开发（COOKIE_SECURE 非 true）保持 false，否则浏览器会拒收 Cookie 导致无法登录。
 			secure: process.env.COOKIE_SECURE === "true",
