@@ -13,6 +13,7 @@
     stars: { id: number; month: string; category: string; subject: string; reason: string }[];
     events: { id: number; at: string; title: string; body: string; photos?: { src: string; caption: string }[] }[];
     spots: { id: number; key: string; title: string; slogan: string; body: string }[];
+    examSummary: { title: string; examDate: string; n: number; avgTotal: number; maxTotal: number; minTotal: number; totalBuckets: { label: string; count: number }[]; subjectAvgs: { subject: string; avg: number; max: number; n: number }[]; rankBuckets: { label: string; count: number }[] };
   };
   const d = $derived(page.data as D);
   const totalMembers = $derived((d?.groups ?? []).reduce((a, g) => a + (g.members?.length ?? 0), 0));
@@ -42,7 +43,7 @@
     }).filter(Boolean).join(" ");
   }
   const xAxis = (i: number, n: number) => PAD + (i / Math.max(1, n - 1)) * (W - PAD * 2);
-  const NAV_ITEMS: [string, string][] = [["#sec-hero", "概况"], ["#sec-rules", "公约"], ["#sec-leaders", "领航人"], ["#sec-groups", "小组"], ["#sec-rank", "排行"], ["#sec-acad", "学业"], ["#sec-growth", "成长"], ["#sec-sports", "运动会"], ["#sec-culture", "文化"], ["#sec-quote", "寄语"]];
+  const NAV_ITEMS: [string, string][] = [["#sec-hero", "概况"], ["#sec-rules", "公约"], ["#sec-leaders", "领航人"], ["#sec-groups", "小组"], ["#sec-rank", "排行"], ["#sec-acad", "学业"], ["#sec-exam", "成绩"], ["#sec-growth", "成长"], ["#sec-sports", "运动会"], ["#sec-moments", "瞬间"], ["#sec-culture", "文化"], ["#sec-wall", "后墙"], ["#sec-quote", "寄语"]];
   const rules: string[] = ["入室即静，入座即学", "按时到班，不迟到不早退", "作业独立完成，不抄不拖", "值日尽责，工具归位", "课堂积极思考，勇于发言", "同学互助，不嘲笑不孤立", "手机不进教室，专注学习", "爱护公物，节约水电"];
   const timetable: [string, string][] = [["7:30", "早读"], ["8:00-8:45", "第一节"], ["9:00-9:45", "第二节"], ["10:00-10:45", "第三节"], ["11:00-11:45", "第四节"], ["14:00-14:45", "第五节"], ["15:00-15:45", "第六节"], ["16:00-16:45", "第七节"]];
   const CULT_ICONS: Record<string, string> = { entry: "🚪", south_wall: "🧲", north_wall: "📢", back_wall: "📊", water: "💧", ac: "❄️", hygiene: "🧹" };
@@ -128,7 +129,154 @@
         return Object.assign({}, e, { meetName, grade, items, photos });
       })
   );
+
+  // ── 班级瞬间（2026-10-28 同步自 /board 页）：镜头里的日常，按场景归四类 ──
+  type Photo = { src: string; cap: string };
+  const MOMENTS: { title: string; photos: Photo[] }[] = [
+    {
+      title: "教室与学习",
+      photos: [
+        { src: "/campus/2028/class8/daily/IMG_20261022_170457.jpg", cap: "晚自习的教室——黑板、电子屏与堆满书的课桌" },
+        { src: "/campus/2028/class8/daily/IMG_20261023_080638.jpg", cap: "窗上的 Ciallo 贴纸，窗外是深秋" },
+        { src: "/campus/2028/class8/daily/IMG_20261022_170523.jpg", cap: "「熬过无声的坚持，终迎如愿的曙光」" }
+      ]
+    },
+    {
+      title: "板报与小组",
+      photos: [
+        { src: "/campus/2028/class8/daily/IMG_20261022_170413.jpg", cap: "「物化帝」锦旗与元旦晚会筹备白板" },
+        { src: "/campus/2028/class8/daily/IMG_20261023_080653.jpg", cap: "窗下的小组手绘板报" }
+      ]
+    },
+    {
+      title: "劳动值日",
+      photos: [
+        { src: "/campus/2028/class8/daily/IMG_20261022_170117.jpg", cap: "秋季卫生大扫除 · 清扫人行道落叶" },
+        { src: "/campus/2028/class8/daily/IMG_20261022_170123.jpg", cap: "落叶装运 ·「自我监督」的垃圾桶也来帮忙" },
+        { src: "/campus/2028/class8/daily/IMG_20261022_170204.jpg", cap: "协作清运，一桶接一桶" }
+      ]
+    },
+    {
+      title: "校园内外",
+      photos: [
+        { src: "/campus/2028/class8/daily/IMG_20261023_110324.jpg", cap: "校园林荫道" },
+        { src: "/campus/2028/class8/daily/IMG_20261023_110240.jpg", cap: "校外见闻 · 路过施工现场" }
+      ]
+    }
+  ];
+  let viewing = $state<Photo | null>(null);
+
+  // ── 班级后墙标语 · 全景全屏滚动 + 列表/树状网格（42 张，已去掉 7 张看板）──
+  const WALL_BANNER = "/campus/2028/class8/wall/wall-banner.jpg";
+  // 42 张（已去掉布告栏/荣誉栏/照片墙类看板：170413 / 163843 / 163856 / 164039 / 164348 / 164357 / 164401）
+  const WALL_FILES = [
+    "IMG_20261022_170117.jpg",
+    "IMG_20261022_170123.jpg",
+    "IMG_20261022_170204.jpg",
+    "IMG_20261022_170457.jpg",
+    "IMG_20261022_170523.jpg",
+    "IMG_20261023_080638.jpg",
+    "IMG_20261023_080653.jpg",
+    "IMG_20261023_110240.jpg",
+    "IMG_20261023_110324.jpg",
+    "IMG_20261029_165533.jpg",
+    "IMG_20261029_165536.jpg",
+    "IMG_20261029_165537.jpg",
+    "IMG_20261029_165559.jpg",
+    "IMG_20261029_165600.jpg",
+    "IMG_20261029_165741.jpg",
+    "IMG_20261030_163905.jpg",
+    "IMG_20261030_163913.jpg",
+    "IMG_20261030_163915.jpg",
+    "IMG_20261030_164058.jpg",
+    "IMG_20261030_164108.jpg",
+    "IMG_20261030_164120.jpg",
+    "IMG_20261030_164126.jpg",
+    "IMG_20261030_164132.jpg",
+    "IMG_20261030_164147.jpg",
+    "IMG_20261030_164153.jpg",
+    "IMG_20261030_164159.jpg",
+    "IMG_20261030_164204.jpg",
+    "IMG_20261030_164210.jpg",
+    "IMG_20261030_164216.jpg",
+    "IMG_20261030_164221.jpg",
+    "IMG_20261030_164230.jpg",
+    "IMG_20261030_164236.jpg",
+    "IMG_20261030_164245.jpg",
+    "IMG_20261030_164253.jpg",
+    "IMG_20261030_164259.jpg",
+    "IMG_20261030_164306.jpg",
+    "IMG_20261030_164312.jpg",
+    "IMG_20261030_164319.jpg",
+    "IMG_20261030_164327.jpg",
+    "IMG_20261030_164335.jpg",
+    "IMG_20261030_164342.jpg",
+    "IMG_20261030_164408.jpg"
+  ];
+  const wallCap = (f: string) => {
+    const m = f.match(/IMG_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+    return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : f;
+  };
+  const WALL_PHOTOS = WALL_FILES.map((f) => ({ src: `/campus/2028/class8/wall/${f}`, cap: wallCap(f) }));
+  // 按日期分组（树状：日期 → 照片列表）
+  const WALL_GROUPS = $derived.by(() => {
+    const g: { date: string; items: { src: string; cap: string }[] }[] = [];
+    for (const p of WALL_PHOTOS) {
+      const date = p.cap.slice(0, 10);
+      const last = g[g.length - 1];
+      if (last && last.date === date) last.items.push(p);
+      else g.push({ date, items: [p] });
+    }
+    return g;
+  });
+  let wallPano = $state(false);                 // 全景长图全屏滚动
+  let panoFit = $state(false);                  // 全景：false=原始尺寸(可横滚看细节) / true=适宽全览
+  let wallLb = $state<number | null>(null);     // 当前放大照片索引
+  let lbDown = $state<{ x: number; y: number } | null>(null); // 灯箱按下手势起点（区分滑动 vs 点击）
+  const wallLbPrev = () => { if (wallLb !== null) wallLb = (wallLb - 1 + WALL_PHOTOS.length) % WALL_PHOTOS.length; };
+  const wallLbNext = () => { if (wallLb !== null) wallLb = (wallLb + 1) % WALL_PHOTOS.length; };
+
+  /**
+   * 缩略图加载态（2026-11-01 修）。
+   *
+   * 为什么不用 CSS 类驱动可见性：
+   *   原来写的是 `<img onload={wallLoaded}>` + CSS `.wall-thumb.loaded img { opacity: 1 }`。
+   *   但 Svelte 的 unused-CSS 剪枝只认模板里出现过的类名 —— `.loaded` 是运行时
+   *   `classList.add` 才会有的，剪枝器判定它「未使用」，把**整条**规则删掉
+   *   （产物实测：`.wall-thumb.loaded:before` 保留，`.wall-thumb.loaded img` 消失）。
+   *   结果 42 张缩略图永远停在 `opacity:0`，只剩一片空白占位 —— 与此前
+   *   「照片墙看不到」同源的一类坑。
+   *
+   * 修法：可见性一律走 inline style（永不被剪枝），`.loaded` 类只负责停掉流光
+   *   （那条规则实测保留）；同时补 `complete` 竞态 —— 图片若在 hydration 之前
+   *   就已从缓存加载完，load 事件不会再触发，onload 方案会永久卡在占位态。
+   */
+  function shimmerImg(node: HTMLImageElement) {
+    const mark = () => {
+      node.style.opacity = "1";
+      node.closest(".wall-thumb")?.classList.add("loaded");
+    };
+    const fail = () => node.closest(".wall-thumb")?.classList.add("loaded");
+    if (node.complete) {
+      if (node.naturalWidth > 0) mark();
+      else fail(); // 加载失败：也要停掉流光，别留永久动画
+    } else {
+      node.addEventListener("load", mark, { once: true });
+      node.addEventListener("error", fail, { once: true });
+    }
+    return {};
+  }
+  // 成绩图表辅助
+  const maxCount = (arr?: { count: number }[]) => (arr && arr.length ? Math.max(...arr.map((x) => x.count), 1) : 1);
+  const maxAvg = (arr?: { avg: number }[]) => (arr && arr.length ? Math.max(...arr.map((x) => x.avg), 1) : 1);
 </script>
+<svelte:window onkeydown={(e) => {
+  if (e.key === "Escape") { wallPano = false; wallLb = null; viewing = null; }
+  else if (wallLb !== null) {
+    if (e.key === "ArrowRight") { e.preventDefault(); wallLbNext(); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); wallLbPrev(); }
+  }
+}} />
 <nav class="sec-nav">
   {#each NAV_ITEMS as item (item[0])}
     <a class="nav-pill" href={item[0]}>{item[1]}</a>
@@ -278,9 +426,65 @@
   </div>
 </section>
 
+<section id="sec-exam" class="sec">
+  <div use:reveal class="reveal sec-head">
+    <span class="sec-no">06 · 月考成绩</span>
+    <h2 class="h-serif">第一次月考 · 班级总结</h2>
+    <p class="sec-sub">共 {d?.examSummary?.n ?? 0} 人 · 仅展示整体统计，不显示个人成绩与姓名。</p>
+  </div>
+  <div class="exam-stats">
+    <div class="exam-stat"><b>{d?.examSummary?.n ?? 0}</b><span>参考人数</span></div>
+    <div class="exam-stat"><b>{d?.examSummary?.avgTotal ?? 0}</b><span>平均总分</span></div>
+    <div class="exam-stat"><b>{d?.examSummary?.maxTotal ?? 0}</b><span>最高总分</span></div>
+    <div class="exam-stat"><b>{d?.examSummary?.minTotal ?? 0}</b><span>最低总分</span></div>
+  </div>
+  <div class="exam-grid">
+    <div class="panel">
+      <h3 class="h-sub">总分分布</h3>
+      <div class="bchart">
+        {#each d?.examSummary?.totalBuckets ?? [] as b}
+          {@const w = (b.count / maxCount(d?.examSummary?.totalBuckets)) * 100}
+          <div class="brow">
+            <span class="blabel">{b.label}</span>
+            <span class="btrack"><i class="bfill" use:reveal style="--w:{w}%"></i></span>
+            <span class="bval">{b.count} 人</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+    <div class="panel">
+      <h3 class="h-sub">各科平均分</h3>
+      <div class="bchart">
+        {#each d?.examSummary?.subjectAvgs ?? [] as s}
+          {@const w = (s.avg / maxAvg(d?.examSummary?.subjectAvgs)) * 100}
+          <div class="brow">
+            <span class="blabel">{s.subject}{s.n < (d?.examSummary?.n ?? 0) ? ` (${s.n}人)` : ""}</span>
+            <span class="btrack"><i class="bfill" use:reveal style="--w:{w}%"></i></span>
+            <span class="bval">{s.avg}</span>
+          </div>
+        {/each}
+      </div>
+      <p class="chart-note">各科满分不同，此处为原始平均分；英语 / 俄语为分语种小班。</p>
+    </div>
+    <div class="panel">
+      <h3 class="h-sub">班级名次分布</h3>
+      <div class="bchart">
+        {#each d?.examSummary?.rankBuckets ?? [] as b}
+          {@const w = (b.count / (d?.examSummary?.n ?? 1)) * 100}
+          <div class="brow">
+            <span class="blabel">{b.label} 名</span>
+            <span class="btrack"><i class="bfill" use:reveal style="--w:{w}%"></i></span>
+            <span class="bval">{b.count} 人</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="sec-growth" class="sec">
   <div use:reveal class="reveal sec-head">
-    <span class="sec-no">06 · 成长看板</span>
+    <span class="sec-no">07 · 成长看板</span>
     <h2 class="h-serif">星光榜 · 大事记</h2>
   </div>
   <div class="growth-grid">
@@ -310,7 +514,7 @@
 
 <section id="sec-sports" class="sec">
   <div use:reveal class="reveal sec-head">
-    <span class="sec-no">07 · 运动会</span>
+    <span class="sec-no">08 · 运动会</span>
     <h2 class="h-serif">赛场风云 · 班级高光时刻</h2>
     <p class="sec-sub">点击照片查看大图，左右切换。</p>
   </div>
@@ -353,9 +557,30 @@
   </div>
 </section>
 
+<section id="sec-moments" class="sec">
+  <div use:reveal class="reveal sec-head">
+    <span class="sec-no">09 · 班级瞬间</span>
+    <h2 class="h-serif">镜头里的八班日常</h2>
+    <p class="sec-sub">点击照片查看大图。四类：教室与学习 · 板报与小组 · 劳动值日 · 校园内外。</p>
+  </div>
+  {#each MOMENTS as g (g.title)}
+    <div class="gal-cat">
+      <span class="gal-cat-name">{g.title}</span>
+      <div class="gal-grid">
+        {#each g.photos as p, i (p.src)}
+          <button type="button" class="gal-item" onclick={() => (viewing = p)} aria-label={p.cap}>
+            <img src={p.src} alt={p.cap} loading="lazy" />
+            <span class="gal-cap">{p.cap}</span>
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/each}
+</section>
+
 <section id="sec-culture" class="sec">
   <div use:reveal class="reveal sec-head">
-    <span class="sec-no">07 · 文化点位</span>
+    <span class="sec-no">10 · 文化点位</span>
     <h2 class="h-serif">教室里处处有育人细节</h2>
   </div>
   <div class="spot-grid">
@@ -368,9 +593,37 @@
   </div>
 </section>
 
+<section id="sec-wall" class="sec">
+  <div use:reveal class="reveal sec-head">
+    <span class="sec-no">11 · 班级后墙</span>
+    <h2 class="h-serif">后墙标语 · 全景 + 树状图集</h2>
+    <p class="sec-sub">点全景图可全屏滚动浏览 · 下方按日期分组的缩略图，点击看大图。共 {WALL_PHOTOS.length} 张（已去掉重复看板）。</p>
+  </div>
+  <button class="wall-banner" onclick={() => (wallPano = true)} aria-label="全屏查看班级后墙标语全景">
+    <img src={WALL_BANNER} alt="班级后墙标语全景" loading="lazy" />
+    <span class="wall-banner-hint">⤢ 点击全屏滚动查看</span>
+  </button>
+  <div class="wall-groups">
+    {#each WALL_GROUPS as g (g.date)}
+      <div class="wall-date">
+        <b>{g.date}</b>
+        <span class="wall-date-count">{g.items.length} 张</span>
+      </div>
+      <div class="wall-grid">
+        {#each g.items as p, i (p.src)}
+          <button class="wall-thumb" onclick={() => (wallLb = WALL_PHOTOS.indexOf(p))} aria-label={p.cap}>
+            <img use:shimmerImg src={p.src} alt={p.cap} loading="lazy" />
+            <span class="wall-thumb-cap">{p.cap.slice(11)}</span>
+          </button>
+        {/each}
+      </div>
+    {/each}
+  </div>
+</section>
+
 <section id="sec-quote" class="sec">
   <div use:reveal class="reveal sec-head">
-    <span class="sec-no">08 · 班级寄语</span>
+    <span class="sec-no">12 · 班级寄语</span>
     <h2 class="h-serif">目标墙 · 留白互动区</h2>
   </div>
   <blockquote use:reveal class="reveal-clamp quote">
@@ -383,6 +636,96 @@
     <div use:reveal class="reveal fact"><b>{d?.leaders?.length ?? 0}</b><span>学科领航人</span></div>
   </div>
 </section>
+<!-- 全屏幻灯片 -->
+{#if slide}
+  <div class="lightbox" role="dialog" aria-modal="true" ontouchstart={onTouchStart} ontouchend={onTouchEnd} onclick={closeSlide}>
+    {#key slide.i}
+      <figure class="lb-figure {slideDir > 0 ? "fig-next" : "fig-prev"}">
+        <img src={slide.photos[slide.i].src} alt={slide.photos[slide.i].caption} class="lb-img" onload={(ev) => ((ev.currentTarget as HTMLElement).style.opacity = "1")} />
+        <figcaption class="lb-cap">
+          <b class="lb-cap-main">{slide.photos[slide.i].caption}</b>
+          <span class="lb-sport">{slide.photos[slide.i].sportTitle} · {slide.photos[slide.i].sportAt}</span>
+          {#if slide.photos[slide.i].rank}
+            <span class="lb-rank {rankCls(slide.photos[slide.i].rank)}">🏅 {slide.photos[slide.i].proj} · {slide.photos[slide.i].rank}</span>
+          {/if}
+        </figcaption>
+      </figure>
+    {/key}
+    <div class="lb-brand">🏅 赛场高光 · 运动会图集</div>
+    <div class="lb-progress">{slide.i + 1} / {slide.photos.length}</div>
+    <p class="lb-hint">← 滑动 / 方向键切换 → · Esc 关闭</p>
+    <button class="lb-btn lb-prev" aria-label="上一张" onclick={(ev) => { ev.stopPropagation(); prevSlide(); }}>‹</button>
+    <button class="lb-btn lb-next" aria-label="下一张" onclick={(ev) => { ev.stopPropagation(); nextSlide(); }}>›</button>
+    <button class="lb-btn lb-close" aria-label="关闭" onclick={(ev) => { ev.stopPropagation(); closeSlide(); }}>×</button>
+  </div>
+{/if}
+
+{#if viewing}
+  <div class="gal-lightbox" role="dialog" aria-modal="true" onclick={(e) => { if (e.target === e.currentTarget) viewing = null; }}>
+    <figure>
+      <img src={viewing.src} alt={viewing.cap} />
+      <figcaption>{viewing.cap}</figcaption>
+    </figure>
+  </div>
+{/if}
+
+{#if wallLb !== null}
+  <div
+    class="wall-lb"
+    role="dialog"
+    aria-modal="true"
+    onpointerdown={(e) => (lbDown = { x: e.clientX, y: e.clientY })}
+    onpointercancel={() => (lbDown = null)}
+    onpointerup={(e) => {
+      const start = lbDown;
+      lbDown = null;
+      if (!start) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      // 横向位移超过阈值 → 判定为滑动切图（不关闭浮层）
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+        if (dx < 0) wallLbNext();
+        else wallLbPrev();
+        return;
+      }
+      // 位移很小 → 视为点击背景，关闭
+      if (e.target === e.currentTarget) wallLb = null;
+    }}
+  >
+    <figure>
+      <img src={WALL_PHOTOS[wallLb].src} alt={WALL_PHOTOS[wallLb].cap} onload={(ev) => ((ev.currentTarget as HTMLElement).style.opacity = "1")} />
+      <figcaption>
+        <b>{WALL_PHOTOS[wallLb].cap}</b>
+        <span class="wall-lb-count">{wallLb + 1} / {WALL_PHOTOS.length}</span>
+      </figcaption>
+    </figure>
+    <button class="wall-lb-btn wall-lb-prev" aria-label="上一张" onclick={(e) => { e.stopPropagation(); wallLbPrev(); }}>‹</button>
+    <button class="wall-lb-btn wall-lb-next" aria-label="下一张" onclick={(e) => { e.stopPropagation(); wallLbNext(); }}>›</button>
+    <button class="wall-lb-btn wall-lb-close" aria-label="关闭" onclick={(e) => { e.stopPropagation(); wallLb = null; }}>×</button>
+    <p class="wall-lb-hint">← → 切换 · 左右滑动切换 · Esc 关闭</p>
+  </div>
+{/if}
+
+{#if wallPano}
+  <div class="wall-pano" role="dialog" aria-modal="true">
+    <div class="wall-pano-top">
+      <b>班级后墙标语 · 全景</b>
+      <div class="wall-pano-tools">
+        <button class="wall-pano-fit" onclick={() => (panoFit = !panoFit)}>{panoFit ? "看细节" : "看全貌"}</button>
+        <button class="wall-pano-close" aria-label="关闭" onclick={() => (wallPano = false)}>×</button>
+      </div>
+    </div>
+    <div class="wall-pano-scroll" onclick={(e) => { if (e.target === e.currentTarget) wallPano = false; }}>
+      <img
+        src={WALL_BANNER}
+        alt="班级后墙标语全景"
+        style={panoFit ? "width:100%" : ""}
+        onload={(ev) => ((ev.currentTarget as HTMLElement).style.opacity = "1")}
+      />
+    </div>
+    <p class="wall-pano-hint">{panoFit ? "整幅缩放全览 · 点「看细节」可横向滚动逐段读" : "横向拖动 / 滚动查看全景 · Esc 关闭"}</p>
+  </div>
+{/if}
 <style>
   .sec-nav { position: sticky; top: 0; z-index: 30; display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0; background: rgba(250,246,238,.92); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(42,38,32,.1); }
   .nav-pill { padding: 5px 13px; border-radius: 999px; font-size: .8rem; color: #4a443c; text-decoration: none; transition: background .25s, color .25s; }
@@ -574,27 +917,88 @@
   .g-leader-none { color: #b8b0a4; font-style: normal; }
   @media (max-width: 720px) { .group-card { grid-template-columns: 1fr; } .g-poster { aspect-ratio: 16/9; } }
 
+  /* ── 班级瞬间（2026-10-28 移植自 /board 页）── */
+  .sec-moments { }
+  .gal-cat { margin-top: 1.2rem; }
+  .gal-cat-name { display: inline-block; font-size: .8rem; font-weight: 700; letter-spacing: .12em; color: #4a443c; background: #f3ecdd; border-radius: 999px; padding: .22rem .8rem; margin-bottom: .7rem; }
+  .gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: .9rem; }
+  .gal-item { position: relative; display: block; padding: 0; border: 1px solid rgba(42,38,32,.12); border-radius: .9rem; overflow: hidden; background: #fffdf7; cursor: zoom-in; transition: transform .5s var(--ease-expo), box-shadow .5s var(--ease-expo), border-color .5s var(--ease-expo); }
+  .gal-item:hover { transform: translateY(-3px); border-color: #c8542e; box-shadow: 0 16px 32px -22px rgba(42,38,32,.35); }
+  .gal-item img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+  .gal-cap { position: absolute; inset: auto 0 0 0; padding: 1.4rem .7rem .55rem; font-size: .74rem; line-height: 1.4; color: #fffdf7; background: linear-gradient(transparent, rgba(20,16,10,.72)); text-align: left; }
+  .gal-lightbox { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 2rem; background: rgba(20,16,10,.82); cursor: zoom-out; }
+  .gal-lightbox figure { margin: 0; max-width: min(64rem, 100%); max-height: 100%; display: flex; flex-direction: column; gap: .5rem; }
+  .gal-lightbox img { max-width: 100%; max-height: 78vh; object-fit: contain; border-radius: .6rem; }
+  .gal-lightbox figcaption { color: #fffdf7; font-size: .85rem; text-align: center; }
+
+  /* ── 月考成绩 · 无姓名总结图表 ── */
+  .exam-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .6rem; margin-bottom: 1rem; }
+  .exam-stat { background: #fffdf7; border: 1px solid rgba(42,38,32,.1); border-radius: .7rem; padding: .7rem .9rem; }
+  .exam-stat b { display: block; font-family: var(--font-heading); font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .exam-stat span { font-size: .72rem; color: #8a8178; }
+  .exam-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+  .bchart { display: flex; flex-direction: column; gap: .55rem; }
+  .brow { display: grid; grid-template-columns: 6.2rem 1fr 3rem; align-items: center; gap: .6rem; font-size: .82rem; }
+  .blabel { color: #4a443c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .btrack { height: 1.15rem; background: #f3ecdd; border-radius: 999px; overflow: hidden; }
+  .bfill { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, #c8542e, #b8891a); transition: width 1.1s var(--ease-expo); }
+  .bfill.revealed { width: var(--w); }
+  /* 兜底：JS 整体没跑起来时（html.reveal-late）条形图必须是终态宽度。
+     width 不属于 layout.css 那组 opacity/transform/filter 兜底覆盖范围，
+     不单独兜底的话图表会是 19 条空条。 */
+  html.reveal-late .bfill { width: var(--w) !important; }
+  .bval { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: #2a2620; }
+  .chart-note { font-size: .72rem; color: #8a8178; margin: .7rem 0 0; }
+
+  /* ── 班级后墙 · 全景全屏 + 树状图集 ── */
+  .wall-banner { display: block; width: 100%; margin: .4rem 0 1.2rem; padding: 0; border: 1px solid rgba(42,38,32,.12); border-radius: .8rem; overflow: hidden; background: #f3ecdd; cursor: zoom-in; position: relative; transition: border-color .4s, box-shadow .4s; }
+  .wall-banner:hover { border-color: #c8542e; box-shadow: 0 16px 32px -24px rgba(42,38,32,.4); }
+  .wall-banner img { display: block; width: 100%; height: auto; }
+  .wall-banner-hint { position: absolute; right: .7rem; bottom: .6rem; font-size: .72rem; color: #fffdf7; background: rgba(20,16,10,.55); padding: .22rem .6rem; border-radius: 999px; backdrop-filter: blur(4px); }
+  .wall-groups { display: flex; flex-direction: column; gap: 1.1rem; }
+  .wall-date { display: flex; align-items: center; gap: .5rem; font-family: var(--font-heading); font-weight: 700; font-size: .95rem; margin-bottom: .55rem; }
+  .wall-date::before { content: ""; width: .62rem; height: .62rem; border-radius: 2px; background: #c8542e; }
+  .wall-date-count { font-size: .7rem; color: #8a8178; border: 1px solid rgba(42,38,32,.14); padding: .08rem .5rem; border-radius: 999px; font-weight: 400; }
+  .wall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .6rem; }
+  .wall-thumb { position: relative; aspect-ratio: 1; border-radius: .6rem; overflow: hidden; background: #f3ecdd; border: 1px solid rgba(42,38,32,.08); padding: 0; cursor: zoom-in; transition: border-color .4s, transform .5s var(--ease-expo), box-shadow .5s var(--ease-expo); }
+  .wall-thumb::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, #f3ecdd 30%, #fbf5e9 50%, #f3ecdd 70%); background-size: 200% 100%; animation: wallShimmer 1.4s infinite; }
+  .wall-thumb.loaded::before { opacity: 0; animation: none; }
+  @keyframes wallShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  .wall-thumb:hover { border-color: #c8542e; transform: translateY(-3px); box-shadow: 0 14px 28px -22px rgba(42,38,32,.4); }
+  .wall-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .6s var(--ease-expo), transform .6s var(--ease-expo); }
+  .wall-thumb.loaded img { opacity: 1; }
+  .wall-thumb:hover img { transform: scale(1.06); }
+  .wall-thumb-cap { position: absolute; inset: auto 0 0 0; padding: 1rem .45rem .35rem; font-size: .68rem; color: #fffdf7; background: linear-gradient(transparent, rgba(20,16,10,.68)); text-align: left; opacity: 0; transition: opacity .4s; }
+  .wall-thumb:hover .wall-thumb-cap { opacity: 1; }
+  .wall-lb { position: fixed; inset: 0; z-index: 95; display: flex; align-items: center; justify-content: center; padding: 2rem; background: rgba(20,16,10,.9); cursor: zoom-out; touch-action: none; }
+  .wall-lb figure { margin: 0; max-width: min(70rem, 100%); max-height: 100%; display: flex; flex-direction: column; gap: .5rem; }
+  .wall-lb img { max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: .6rem; opacity: 0; transition: opacity .5s var(--ease-expo); }
+  .wall-lb figcaption { display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: #fffdf7; font-size: .85rem; }
+  .wall-lb-count { color: #c9c0b2; font-variant-numeric: tabular-nums; }
+  .wall-lb-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 2.8rem; height: 2.8rem; border-radius: 50%; border: 1px solid rgba(255,255,255,.18); background: rgba(20,16,10,.6); color: #fffdf7; font-size: 1.6rem; line-height: 1; cursor: pointer; transition: background .3s; backdrop-filter: blur(4px); }
+  .wall-lb-btn:hover { background: rgba(200,84,46,.7); }
+  .wall-lb-prev { left: 1rem; } .wall-lb-next { right: 1rem; }
+  .wall-lb-close { top: 1rem; right: 1rem; transform: none; font-size: 1.3rem; }
+  .wall-lb-hint { position: absolute; bottom: .8rem; left: 50%; transform: translateX(-50%); color: #c9c0b2; font-size: .72rem; }
+  .wall-pano { position: fixed; inset: 0; z-index: 100; background: rgba(12,11,9,.97); display: flex; flex-direction: column; }
+  .wall-pano-top { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .8rem 1rem; color: #e8e2d6; font-family: var(--font-heading); }
+  .wall-pano-tools { display: flex; align-items: center; gap: .5rem; }
+  .wall-pano-fit { font-size: .72rem; color: #e8e2d6; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); border-radius: 999px; padding: .3rem .7rem; cursor: pointer; font-family: inherit; }
+  .wall-pano-fit:hover { background: rgba(200,84,46,.7); }
+  .wall-pano-close { width: 2.4rem; height: 2.4rem; border-radius: 50%; border: 1px solid rgba(255,255,255,.18); background: rgba(20,16,10,.6); color: #fffdf7; font-size: 1.3rem; cursor: pointer; }
+  .wall-pano-close:hover { background: rgba(200,84,46,.7); }
+  /* 长图必须从容器左缘起排并两端可达：
+     原来用 flex + justify-content:center，5000px 宽的图被居中后左半边永久滚不到（实测 imgLeft 偏移 -2305px）。 */
+  .wall-pano-scroll { flex: 1; overflow: auto; display: block; padding: .5rem 1rem 1.4rem; cursor: grab; overscroll-behavior: contain; }
+  .wall-pano-scroll img { display: block; height: auto; width: auto; max-width: none; opacity: 0; transition: opacity .5s var(--ease-expo); }
+  .wall-pano-hint { text-align: center; color: #c9c0b2; font-size: .72rem; padding-bottom: .5rem; }
+  @media (max-width: 560px) {
+    .wall-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+    .wall-lb { padding: 1rem; }
+    .wall-lb-btn { width: 2.3rem; height: 2.3rem; font-size: 1.3rem; }
+    /* 窄屏：标签列原本占 6.2rem，320px 视口下条形轨道只剩 93px，几乎不可读 */
+    .brow { grid-template-columns: 4.6rem 1fr 2.6rem; gap: .4rem; font-size: .74rem; }
+    .bchart { gap: .45rem; }
+  }
+
 </style>
-<!-- 全屏幻灯片 -->
-{#if slide}
-  <div class="lightbox" role="dialog" aria-modal="true" ontouchstart={onTouchStart} ontouchend={onTouchEnd} onclick={closeSlide}>
-    {#key slide.i}
-      <figure class="lb-figure {slideDir > 0 ? "fig-next" : "fig-prev"}">
-        <img src={slide.photos[slide.i].src} alt={slide.photos[slide.i].caption} class="lb-img" onload={(ev) => ((ev.currentTarget as HTMLElement).style.opacity = "1")} />
-        <figcaption class="lb-cap">
-          <b class="lb-cap-main">{slide.photos[slide.i].caption}</b>
-          <span class="lb-sport">{slide.photos[slide.i].sportTitle} · {slide.photos[slide.i].sportAt}</span>
-          {#if slide.photos[slide.i].rank}
-            <span class="lb-rank {rankCls(slide.photos[slide.i].rank)}">🏅 {slide.photos[slide.i].proj} · {slide.photos[slide.i].rank}</span>
-          {/if}
-        </figcaption>
-      </figure>
-    {/key}
-    <div class="lb-brand">🏅 赛场高光 · 运动会图集</div>
-    <div class="lb-progress">{slide.i + 1} / {slide.photos.length}</div>
-    <p class="lb-hint">← 滑动 / 方向键切换 → · Esc 关闭</p>
-    <button class="lb-btn lb-prev" aria-label="上一张" onclick={(ev) => { ev.stopPropagation(); prevSlide(); }}>‹</button>
-    <button class="lb-btn lb-next" aria-label="下一张" onclick={(ev) => { ev.stopPropagation(); nextSlide(); }}>›</button>
-    <button class="lb-btn lb-close" aria-label="关闭" onclick={(ev) => { ev.stopPropagation(); closeSlide(); }}>×</button>
-  </div>
-{/if}
