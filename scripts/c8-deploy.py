@@ -33,6 +33,21 @@ def run(step: str, args: list[str]) -> int:
     return p.returncode
 
 
+def sync_trees() -> int:
+    """build 前先把 a 树（唯一事实源）单向同步到 ITH。
+
+    这样「改了 a 树 → 直接跑本脚本」就能正确上线，不必再记得手工 cp。
+    只覆盖「a 树有更新」的文件，绝不删除 ITH 独有的运行态文件（content/.env/build）。
+    """
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sync-to-ith.py")
+    if not os.path.exists(script):
+        print("[SYNC] 找不到 sync-to-ith.py，跳过同步")
+        return 0
+    print(f"\n{'=' * 70}\n[SYNC] a 树 → ITH 单向同步\n{'=' * 70}", flush=True)
+    p = subprocess.run([sys.executable, script, "--apply"], text=True)
+    return p.returncode
+
+
 def main() -> int:
     if not os.path.exists(ROOT):
         print(f"FATAL: ITH 树不存在: {ROOT}")
@@ -40,6 +55,12 @@ def main() -> int:
     if not os.path.exists(os.path.join(ROOT, "src", "routes", "campus", "2028", "class8", "+page.svelte")):
         print("FATAL: ITH 树缺少 class8 页面")
         return 2
+
+    if "--no-sync" not in sys.argv:
+        rc = sync_trees()
+        if rc != 0:
+            print("\n同步失败 —— 中止，未构建。")
+            return rc
 
     rc = run("BUILD", ["build"])
     if rc != 0:
