@@ -14,10 +14,19 @@
  * 因为最终仍然叫 `build/`，`sync-console.mjs` / 自检 / 门禁全部无需改动。
  *
  * 用法：
- *   node scripts/release-site.mjs build     构建到 build.next（安全，不影响线上）
+ *   node scripts/release-site.mjs build     在构建根(ROOT)构到 build.next（安全，不影响线上）
+ *   node scripts/release-site.mjs stage     把 ROOT/build.next 搬进部署根(DEPLOY)/build.next
  *   node scripts/release-site.mjs switch    切换 + 重启 + 验收；验收失败自动回滚
+ *   node scripts/release-site.mjs release   build → stage → switch 一步到位
  *   node scripts/release-site.mjs status    打印当前状态
  *   node scripts/release-site.mjs selftest  用假目录验证改名/回滚逻辑（不碰生产）
+ *
+ * 双根（2026-11-01 物理合并）：
+ *   ROOT  = 构建根（唯一事实源：源码 + node_modules 在此；vite 在此跑）
+ *   DEPLOY= 部署根（线上实例：build/ 产物 + content/ 运行态 + .env 在此）
+ *   默认 DEPLOY === ROOT（在实例目录原地跑，旧行为完全兼容）。
+ *   跨树部署：设 STELLARITH_DEPLOY_ROOT=线上目录，build 在 ROOT、stage 把产物
+ *   搬过去、switch 在 DEPLOY 原地原子切换 —— 线上 build/ 永不被构建过程触碰。
  *
  * 退出码：0 成功 / 1 失败（switch 失败时已尽力回滚）
  */
@@ -28,9 +37,18 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const LIVE = path.join(ROOT, "build");
-const STAGING = path.join(ROOT, "build.next");
-const LOG_DIR = path.resolve(ROOT, "..", "..", "_logs");
+// ── 双根（2026-11-01 物理合并）───────────────────────────────────────────────
+// ROOT = 构建根：源码与 node_modules 所在（唯一事实源，a 树）。vite 在这里跑。
+// DEPLOY = 部署根：build/ 产物、content/ 运行态数据、.env 所在（线上实例目录）。
+//   跨树部署：STELLARITH_DEPLOY_ROOT 指向线上目录；流程 build(在 ROOT) → stage
+//   (产物搬过去) → switch(在 DEPLOY 原子切换)。
+//   不设该变量时 DEPLOY === ROOT —— 旧行为完全兼容（在实例目录原地跑依旧可用）。
+const DEPLOY = path.resolve(process.env.STELLARITH_DEPLOY_ROOT || ROOT);
+const LIVE = path.join(DEPLOY, "build");
+const STAGING = path.join(DEPLOY, "build.next");
+// vite 的实际输出位置：相对构建 cwd（ROOT），目录名与 STAGING.basename 保持一致。
+const BUILD_OUTPUT = path.join(ROOT, path.basename(STAGING));
+const LOG_DIR = path.resolve(DEPLOY, "..", "..", "_logs");
 const BUILD_LOG = path.join(LOG_DIR, "release-build.log");
 const PORT = Number(process.env.PORT || 8090);
 const TASK = "StelarithServer";
@@ -150,7 +168,7 @@ async function startServiceOrFallback() {
 		await sleep(1000);
 	}
 	log("⚠️ 计划任务未在 30s 内拉起，改用直接启动 run-prod.bat（脱离父进程）…");
-	const bat = path.join(ROOT, "run-prod.bat");
+	const bat = path.join(DEPLOY, "run-prod.bat");
 	if (!fs.existsSync(bat)) {
 		log(`启动器不存在：${bat}`);
 		return false;
@@ -195,16 +213,16 @@ async function verify(maxMs = 120000) {
 }
 
 // ── 构建 ─────────────────────────────────────────────────────────────────────
-function validateStaging() {
+function validateStaging(dir = STAGING) {
 	const need = [
-		path.join(STAGING, "index.js"),
-		path.join(STAGING, "client"),
-		path.join(STAGING, "server")
+		path.join(dir, "index.js"),
+		path.join(dir, "client"),
+		path.join(dir, "server")
 	];
 	const missing = need.filter((p) => !fs.existsSync(p));
 	if (missing.length) {
 		throw new Error(
-			`旁路产物不完整，缺少：${missing.map((m) => path.relative(ROOT, m)).join(", ")}`
+			`旁路产物不完整，缺少：${missing.map((m) => path.relative(DEPLOY, m)).join(", ")}`
 		);
 	}
 }
@@ -216,7 +234,7 @@ function doBuild(maxAttempts = 4) {
 
 	const env = {
 		...process.env,
-		STELLARITH_BUILD_OUT: path.basename(STAGING),
+		STELLARITH_BUILD_OUT: path.basename(BUILD_OUTPUT),
 		CODEBUDDY_SAFE_DELETE_ENABLED: "0",
 		RAYON_NUM_THREADS: "1",
 		// ⚠️ 追加而不是整体覆盖：NODE_OPTIONS 里原有 safe-delete/language 垫片的 --require
@@ -229,8 +247,8 @@ function doBuild(maxAttempts = 4) {
 	};
 
 	for (let i = 1; i <= maxAttempts; i++) {
-		log(`清空旁路目录…`);
-		rmrf(STAGING);
+		log(`清空旁路目录 ${path.relative(ROOT, BUILD_OUTPUT)}…`);
+		rmrf(BUILD_OUTPUT);
 
 		log(`第 ${i}/${maxAttempts} 次构建…`);
 		const r = spawnSync(process.execPath, [viteBin, "build"], {
@@ -261,7 +279,7 @@ function doBuild(maxAttempts = 4) {
 		const oom = /memory allocation|heap out of memory|Fatal process out of memory/i.test(out);
 		let stagingOk = true;
 		try {
-			validateStaging();
+			validateStaging(BUILD_OUTPUT);
 		} catch {
 			stagingOk = false;
 		}
@@ -283,16 +301,77 @@ function doBuild(maxAttempts = 4) {
 	return false;
 }
 
+// ── 跨树搬运：把 ROOT 的构建产物搬进 DEPLOY 的 build.next ────────────────────────
+function copyDir(src, dst) {
+	fs.mkdirSync(dst, { recursive: true });
+	for (const e of fs.readdirSync(src, { withFileTypes: true })) {
+		const s = path.join(src, e.name);
+		const d = path.join(dst, e.name);
+		if (e.isDirectory()) copyDir(s, d);
+		else if (e.isSymbolicLink()) fs.symlinkSync(fs.readlinkSync(s), d);
+		else fs.copyFileSync(s, d);
+	}
+}
+
+function doStage() {
+	hr(`搬运产物 ROOT→DEPLOY：${path.relative(ROOT, BUILD_OUTPUT)} → ${path.relative(DEPLOY, STAGING)}`);
+	if (path.resolve(BUILD_OUTPUT) === path.resolve(STAGING)) {
+		log("DEPLOY === ROOT（单树模式），stage 即原地，无需搬运。");
+		try {
+			validateStaging(STAGING);
+		} catch (e) {
+			log(`产物校验失败：${e.message}`);
+			return false;
+		}
+		return true;
+	}
+	if (!fs.existsSync(BUILD_OUTPUT)) {
+		log(`ROOT 侧旁路产物不存在：${BUILD_OUTPUT}\n先跑 \`build\`。`);
+		return false;
+	}
+	try {
+		validateStaging(BUILD_OUTPUT);
+	} catch (e) {
+		log(`ROOT 侧产物不完整，拒绝搬运：${e.message}`);
+		return false;
+	}
+	log(`清空 DEPLOY 侧 ${path.relative(DEPLOY, STAGING)}…`);
+	rmrf(STAGING);
+	try {
+		fs.mkdirSync(path.dirname(STAGING), { recursive: true });
+	} catch {
+		/* DEPLOY 已存在则忽略 */
+	}
+	// 同卷用 rename（原子、快）；跨卷回退到 copy + rm。
+	try {
+		fs.renameSync(BUILD_OUTPUT, STAGING);
+		log("已 rename 至 DEPLOY/build.next");
+	} catch (e) {
+		log(`rename 失败（${e.code || e.message}），回退到复制…`);
+		copyDir(BUILD_OUTPUT, STAGING);
+		rmrf(BUILD_OUTPUT);
+		log("已复制到 DEPLOY/build.next 并清理 ROOT 侧");
+	}
+	try {
+		validateStaging(STAGING);
+	} catch (e) {
+		log(`搬运后校验失败：${e.message}`);
+		return false;
+	}
+	log("搬运完成，DEPLOY/build.next 就绪。");
+	return true;
+}
+
 // ── 切换 ─────────────────────────────────────────────────────────────────────
 function pruneOld() {
 	const olds = fs
-		.readdirSync(ROOT, { withFileTypes: true })
+		.readdirSync(DEPLOY, { withFileTypes: true })
 		.filter((d) => d.isDirectory() && d.name.startsWith("build.old-"))
 		.map((d) => ({ name: d.name, t: Number(d.name.slice("build.old-".length)) || 0 }))
 		.sort((a, b) => b.t - a.t);
 	for (const o of olds.slice(KEEP_OLD)) {
 		try {
-			rmrf(path.join(ROOT, o.name));
+			rmrf(path.join(DEPLOY, o.name));
 			log(`清理旧版本目录 ${o.name}`);
 		} catch (e) {
 			log(`清理 ${o.name} 失败（忽略）：${e.message}`);
@@ -310,8 +389,8 @@ async function doSwitch() {
 		return false;
 	}
 
-	const oldDir = path.join(ROOT, `build.old-${stamp()}`);
-	const failedDir = path.join(ROOT, `build.failed-${stamp()}`);
+	const oldDir = path.join(DEPLOY, `build.old-${stamp()}`);
+	const failedDir = path.join(DEPLOY, `build.failed-${stamp()}`);
 	const before = listenerPid();
 	log(`切换前 8090 监听者 pid=${before ?? "(无)"}`);
 
@@ -394,9 +473,9 @@ async function doStatus() {
 	log(`首页 HTTP=${await httpCode(`http://127.0.0.1:${PORT}/`)}`);
 	log(`面板 HTTP=${await httpCode(`http://127.0.0.1:${PORT}/console/`)}`);
 	for (const d of fs
-		.readdirSync(ROOT, { withFileTypes: true })
+		.readdirSync(DEPLOY, { withFileTypes: true })
 		.filter((x) => x.isDirectory() && x.name.startsWith("build."))) {
-		log(`  产物目录 ${d.name}`);
+		log(`  产物目录 ${path.join(path.basename(DEPLOY), d.name)}`);
 	}
 	return true;
 }
@@ -472,21 +551,36 @@ if (cmd === "build") {
 	ok = doBuild();
 	if (ok) {
 		try {
-			validateStaging();
-			log("旁路产物校验通过。确认无误后跑 `switch` 上线。");
+			validateStaging(BUILD_OUTPUT);
+			log("旁路产物校验通过。下一步跑 `stage` 再 `switch` 上线（单树模式直接 `switch`）。");
 		} catch (e) {
 			log(`校验失败：${e.message}`);
 			ok = false;
 		}
 	}
+} else if (cmd === "stage") {
+	ok = doStage();
 } else if (cmd === "switch") {
 	ok = await doSwitch();
+} else if (cmd === "release") {
+	ok = doBuild();
+	if (ok) {
+		try {
+			validateStaging(BUILD_OUTPUT);
+		} catch (e) {
+			log(`构建产物校验失败：${e.message}`);
+			ok = false;
+		}
+	}
+	if (ok) ok = doStage();
+	if (ok) ok = await doSwitch();
+	if (!ok) log("release 中断：未执行任何可能危害线上的步骤。");
 } else if (cmd === "status") {
 	ok = await doStatus();
 } else if (cmd === "selftest") {
 	ok = doSelftest();
 } else {
 	log(`未知命令：${cmd}`);
-	log("可用：build | switch | status | selftest");
+	log("可用：build | stage | switch | release | status | selftest");
 }
 process.exit(ok ? 0 : 1);
