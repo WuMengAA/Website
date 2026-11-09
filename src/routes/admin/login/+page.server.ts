@@ -4,6 +4,7 @@ import { zod4 } from "sveltekit-superforms/adapters";
 import { verifyLogin, verifyToken, makeToken, markLogin, getUser } from "$lib/server/auth.js";
 import { checkLoginLock, recordLoginFailure, clearLoginFailures } from "$lib/server/login-guard.js";
 import { userCan } from "$lib/permissions.js";
+import { isConsoleWebEnabled } from "$lib/console-web.js";
 import { recordActivity } from "$lib/server/activity.js";
 import { loginSchema } from "$lib/schemas/login.js";
 
@@ -17,7 +18,9 @@ export type { LoginForm } from "$lib/schemas/login.js";
  */
 function homeFor(user: { role?: string | null; titles?: string[] | null } | null): string {
 	if (userCan(user as never, "viewAdmin")) return "/admin";
-	if (userCan(user as never, "viewConsole")) return "/admin/console";
+	// 2026-11-09：网页面板下线后，只剩 viewConsole 的账号登录成功应回前台首页，
+	// 而不是跳到 404。登录/限流/会话一整套逻辑保持原样，只改落点。
+	if (userCan(user as never, "viewConsole")) return isConsoleWebEnabled() ? "/admin/console" : "/";
 	return "/";
 }
 

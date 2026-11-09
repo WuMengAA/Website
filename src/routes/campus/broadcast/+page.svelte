@@ -3,6 +3,7 @@
 	import PageHeader from "$lib/components/page-header.svelte";
 	import { Button } from "$lib/components/ui/button/index.js";
 	import { Radio } from "@lucide/svelte";
+	import { page } from "$app/state";
 
 	// 草稿示例广播记录 —— 实时广播由集控面板（CIMS）推送，可在此做公开只读展示。
 	const broadcasts = [
@@ -23,8 +24,12 @@
 
 	<div class="reveal flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300" style="--reveal-delay:1">
 		<span>⚠️ 本页为草稿示例内容，广播记录为占位。</span>
-		<span class="ml-auto">实时广播由集控面板推送 →</span>
-		<Button href="/admin/console" size="sm" variant="outline">前往集控面板</Button>
+		<!-- 2026-11-09：网页面板下线后这个按钮会变 404 死链，按开关隐藏；
+		     页面本身与「星集控」品牌文案保留（安全策略只下线网页操作端）。 -->
+		{#if (page.data as any)?.consoleWebEnabled === true}
+			<span class="ml-auto">实时广播由集控面板推送 →</span>
+			<Button href="/admin/console" size="sm" variant="outline">前往集控面板</Button>
+		{/if}
 	</div>
 
 	<section class="reveal space-y-3" style="--reveal-delay:2">

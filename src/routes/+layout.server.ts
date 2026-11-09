@@ -1,5 +1,6 @@
 import { getSettings, getNav, getSiteUrl } from "$lib/server/content-store.js";
 import { verifyToken, sanitizeAvatar } from "$lib/server/auth.js";
+import { isConsoleWebEnabled } from "$lib/console-web.js";
 import type { LayoutServerLoad } from "./$types";
 
 export const load: LayoutServerLoad = async ({ cookies }) => {
@@ -24,6 +25,9 @@ export const load: LayoutServerLoad = async ({ cookies }) => {
 			: null,
 		// 是否有编辑权限（admin / editor 可进后台改内容；普通读者/未登录为 false）。
 		// 前端所有“编辑/创建”入口与后台菜单都按它显隐，配合 hooks.server.ts 的服务端角色校验。
-		canEdit: !!user && ((await user).role === "admin" || (await user).role === "editor")
+		canEdit: !!user && ((await user).role === "admin" || (await user).role === "editor"),
+		// 星集控网页操作端开关（服务端算好下发，客户端组件不碰 process.env）。
+		// 前后台侧栏、登录分流、入口按钮全部读这一个值，避免各判一套产生漂移。
+		consoleWebEnabled: isConsoleWebEnabled()
 	};
 };

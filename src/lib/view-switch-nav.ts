@@ -18,11 +18,16 @@ export type SwitchUser = { role?: Role | null; titles?: TitleKey[] | null } | nu
  * 落点规则（回归底线，别改）：能进 /admin 就进 /admin；只有集控权限的人
  * （电教委员等）直接进 /admin/console —— 送他去 /admin 会被 hooks 弹回来，
  * 用户会以为「登录没生效」，于是反复登录。
+ *
+ * 2026-11-09 安全策略：星集控网页操作端下线后，只剩 viewConsole 的账号在后台
+ * 已无任何可达页面。此时后台入口必须整体消失（返回 null），否则点了就是 404 死链，
+ * 又变回「登录没生效」的假象。开关由根 layout 服务端下发，客户端不读 process.env。
+ * 参数默认 false（安全默认：漏传 = 视为已下线，绝不误把入口放开）。
  */
-export function adminEntryHref(user: SwitchUser): string | null {
+export function adminEntryHref(user: SwitchUser, consoleWebEnabled = false): string | null {
 	if (!user) return null;
 	if (userCan(user, "viewAdmin")) return "/admin";
-	if (userCan(user, "viewConsole")) return "/admin/console";
+	if (userCan(user, "viewConsole")) return consoleWebEnabled ? "/admin/console" : null;
 	return null;
 }
 

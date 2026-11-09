@@ -3,6 +3,7 @@ import { verifyToken } from "$lib/server/auth.js";
 import { can, userCan } from "$lib/permissions.js";
 import { recordActivity } from "$lib/server/activity.js";
 import { startScheduledBroadcastScheduler } from "$lib/server/scheduled-broadcast-scheduler.js";
+import { isConsoleWebEnabled, shouldBlockConsoleWeb } from "$lib/console-web.js";
 
 /** 启动时挂载：定时广播调度器（每 30s 扫描到点任务 → 云端 notify 通道）。 */
 export const init = () => {
@@ -35,6 +36,21 @@ export async function handle({ event, resolve }) {
 	const url = event.url;
 	let user = null;
 
+	// ── 星集控「网页操作端」下线总闸（安全策略 2026-11-09）─────────────────────
+	// 放在 handle 最前、早于登录校验与一切数据查询：命中即 404，不进 resolve、
+	// 不渲染任何 layout / 不触发活动记录。安全默认 = 关闭（未设 CONSOLE_WEB_ENABLED）。
+	// 这是服务端硬门，直连 URL / 绕过前端菜单一样拦得住。
+	// ⚠️ 只拦页面路径；/api/console/** 控制轴、/api/device/** 被控轴、OAuth 全链路
+	//    一律不在此列（isConsoleWebPath 已限定），设备与登录功能不受影响。
+	// ⚠️ /console/** 的原生静态面板由 adapter-node 静态伺服、不走 hooks，
+	//    故其源文件已物理移出 static/（见 docs/console-web-retirement.md），双保险。
+	if (shouldBlockConsoleWeb(url.pathname)) {
+		return new Response("Not Found", {
+			status: 404,
+			headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" }
+		});
+	}
+
 	// Protect all /admin routes except login, static assets and API auth
 	if (url.pathname.startsWith("/admin")) {
 		const isStaticAsset = ADMIN_STATIC_PATTERNS.some((re) => re.test(url.pathname));
@@ -54,13 +70,18 @@ export async function handle({ event, resolve }) {
 				// 只带 pathname + search，不带 origin：本站内部跳转不需要绝对地址，
 				// 也就不给「外部地址被塞进来」留缝（客户端还会再做一次站内校验）。
 				const returnTo = url.pathname + url.search;
-				// 已登录但权限不足时**绝不能再丢回登录页**——用户会以为「登录没生效」，
-				// 于是反复登录（实测：同一账号 3 分钟内连登 4 次，全是这个假象造成的）。
-				// 有集控面板权限的送去面板，其余给明确的 403，而不是假装未登录。
-				// 两种情况都捎上 returnTo：会话过期后若再兜到登录页，目标不丢。
-				if (u && userCan(u, "viewConsole"))
-					throw redirect(303, "/admin/console?returnTo=" + encodeURIComponent(returnTo));
-				if (u) throw error(403, "当前账号没有后台管理权限");
+			// 已登录但权限不足时**绝不能再丢回登录页**——用户会以为「登录没生效」，
+			// 于是反复登录（实测：同一账号 3 分钟内连登 4 次，全是这个假象造成的）。
+			// 有集控面板权限的送去面板，其余给明确的 403，而不是假装未登录。
+			// 两种情况都捎上 returnTo：会话过期后若再兜到登录页，目标不丢。
+			// 2026-11-09：网页面板下线后，只剩 viewConsole 的账号（电教委员等）在后台
+			// 已无任何可达页面 —— 不能把他们送去 /admin/console（那是 404 死链），
+			// 改送前台首页。登录功能本身保留，账号仍可正常登录。
+			if (u && userCan(u, "viewConsole") && isConsoleWebEnabled())
+				throw redirect(303, "/admin/console?returnTo=" + encodeURIComponent(returnTo));
+			if (u && userCan(u, "viewConsole") && !isConsoleWebEnabled())
+				throw redirect(303, "/");
+			if (u) throw error(403, "当前账号没有后台管理权限");
 				throw redirect(303, "/admin/login?returnTo=" + encodeURIComponent(returnTo));
 			}
 			user = u;
@@ -123,7 +144,11 @@ export async function handle({ event, resolve }) {
 	//
 	// ⚠️ **两个 env 都没配 → 一个指令都不加**（CSP 逐字保持原样）。
 	//    绝不把一个具体域名写死进安全策略 —— 换部署环境就漏。
+	// 2026-11-09：网页操作端下线后，浏览器侧已无任何页面需要连 P2P 信令源，
+	// 继续放行等于白白放宽 attack surface。设备端原生客户端不走浏览器 CSP，
+	// 因此收紧不影响 /api/device/p2p-token 与教室机。
 	const p2pOrigin = (() => {
+		if (!isConsoleWebEnabled()) return "";
 		const raw = (process.env.STELARITH_P2P_PUBLIC_URL || process.env.STELARITH_P2P_URL || "").trim();
 		if (!raw) return "";
 		try {

@@ -26,6 +26,7 @@
 	// 之前这里手写成 string，害得判定函数只能靠 `as any` 硬塞，类型帮不上忙。
 	import type { Role } from "$lib/permissions.js";
 	import { adminEntryHref } from "$lib/view-switch-nav.js";
+	import { isConsoleWebHref } from "$lib/console-web.js";
 	import {
 		readMoreOpen, writeMoreOpen, readCampusOpen, writeCampusOpen, readGroupOpen, writeGroupOpen
 	} from "$lib/sidebar-memory.js";
@@ -54,6 +55,8 @@
 		nav?: { workspace: NavLink[]; more: NavLink[]; bottom: NavLink[]; campus?: NavLink[]; groups?: NavGroupCfg[] };
 		user?: { username?: string; role?: Role | null } | null;
 		canEdit?: boolean;
+		/** 星集控网页操作端开关（根 layout 服务端下发）；缺省 = 已下线。 */
+		consoleWebEnabled?: boolean;
 	} } = $props();
 
 	// ── 图标解析 ─────────────────────────────────────────────────────────────
@@ -153,6 +156,10 @@
 		const src = raw && raw.length > 0 ? raw : fallback;
 		let items = src.map((i) => ({ ...i, icon: resolveIcon(i.icon ?? i.title, opts.fallbackIcon ?? Globe) }));
 		if (opts.hideAdmin) items = items.filter((i) => !i.url.startsWith("/admin"));
+		// 星集控网页操作端下线：默认出厂导航与 content/nav.json 运行时覆盖层里
+		// 指向面板的链接一律不渲染（含 /admin/console 与 /console 两套入口）。
+		// 放在这里做统一拦截，避免只改 defaultProjects 却漏掉导航管理里配的自定义项。
+		if (data?.consoleWebEnabled !== true) items = items.filter((i) => !isConsoleWebHref(i.url));
 		return {
 			key,
 			label,
@@ -168,7 +175,7 @@
 	// 这里的滑块与菜单项全部调它），别在这儿再写一套条件——三处各判一套必然漂移，
 	// 会出现「有滑块但没有后台菜单项」这种错配。
 	// 返回 null = 不进后台（未登录 / 无 viewAdmin 也无 viewConsole）→ 相关入口一律不渲染。
-	const adminHref = $derived(adminEntryHref(data?.user));
+	const adminHref = $derived(adminEntryHref(data?.user, data?.consoleWebEnabled === true));
 	const authed = $derived(!!(data?.user));
 
 	// 固定分组。工作区不折叠（它是导航主干，收起来等于把首页藏了）；
@@ -202,7 +209,13 @@
 	const customGroups = $derived(
 		((data?.nav?.groups ?? []) as NavGroupCfg[])
 			.filter((g) => (g.showIn ?? "both") !== "admin")
-			.map((g) => ({ ...g, icon: resolveIcon(g.icon, Globe) }))
+			.map((g) => ({
+				...g,
+				icon: resolveIcon(g.icon, Globe),
+				items: data?.consoleWebEnabled === true
+					? g.items
+					: (g.items ?? []).filter((i) => !isConsoleWebHref(i.url))
+			}))
 	);
 
 	// 底部固定组：摘掉 nav.json 里指向后台的那条（「后台 → /admin」）。
@@ -212,6 +225,7 @@
 		(data?.nav?.bottom && data.nav.bottom.length > 0 ? data.nav.bottom : defaultBottom)
 			.map((i) => ({ ...i, icon: resolveIcon(i.icon ?? i.title, Globe) }))
 			.filter((b) => !b.url.startsWith("/admin"))
+			.filter((b) => data?.consoleWebEnabled === true || !isConsoleWebHref(b.url))
 	);
 
 	// ── 展开态：首屏用默认值（服务端与客户端算出同一个值，不会 hydration 抖动），

@@ -53,7 +53,7 @@
 	// 前台顶栏的「后台」入口落点。判定复用 $lib/view-switch-nav 的**唯一**实现
 	// （侧栏滑块、侧栏菜单项调用的是同一份，别再在这里写第二套条件）。
 	// 未登录 / 无任何后台权限 → null → 顶栏该入口完全不渲染（访客看不到任何后台入口）。
-	const adminHref = $derived(adminEntryHref(data.user));
+	const adminHref = $derived(adminEntryHref(data.user, (data as any)?.consoleWebEnabled === true));
 
 	// 沉浸式全屏区：档案库引擎要在无任何站点外壳（无侧边栏/顶栏/盒框）下
 	// 铺满整个视口，像原版 RhineLabUI 那样全屏沉浸。此路由脱离 Sidebar 外壳直接渲染。

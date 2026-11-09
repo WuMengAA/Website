@@ -17,6 +17,7 @@
 	import { readGroupOpen, writeGroupOpen } from "$lib/sidebar-memory.js";
 	import { KeyRound, LayoutDashboard, LayoutGrid, BookOpen, Rocket, BookMarked, Link, Globe, ExternalLink, Settings, UsersRound, GraduationCap, CalendarDays, CalendarClock, Inbox, LayoutList, MessageSquare, Megaphone, Send, Flag, FileCheck2, GitPullRequestArrow, MessagesSquare, Rss, MonitorSmartphone, MonitorCog, Activity, FileText, ShieldCheck, ShieldPlus, Archive, Paperclip, HardDrive, SlidersHorizontal, History, AppWindow, ScrollText, MonitorPlay, Dices, Volume2, Music2, Radio } from "@lucide/svelte";
 	import { adminEntryHref, readLastSitePath } from "$lib/view-switch-nav.js";
+	import { isConsoleWebHref } from "$lib/console-web.js";
 	import type { LayoutProps } from "./$types";
 
 	const { children, data }: LayoutProps = $props();
@@ -106,7 +107,13 @@
 	const PROJECT_NAV: NavItem[] = [
 		{ title: "星集控", url: "/admin/console", icon: MonitorSmartphone, need: "viewConsole" },
 	];
-	const projectNav = $derived(PROJECT_NAV.filter((i) => userCan(data.user as any, i.need)));
+	// 2026-11-09 安全策略：网页操作端下线时整个「项目」组不渲染（外层已有
+	// projectNav.length > 0 守卫）。开关恢复后入口自动回来，不必再改代码。
+	const projectNav = $derived(
+		(data as any)?.consoleWebEnabled === true
+			? PROJECT_NAV.filter((i) => userCan(data.user as any, i.need))
+			: []
+	);
 
 	let adminProjectOpen = $state(true);
 	let adminProjectHydrated = $state(false);
@@ -136,7 +143,13 @@
 	const customGroups = $derived(
 		((((data as any)?.nav?.groups ?? []) as any[]))
 			.filter((g) => (g?.showIn ?? "both") !== "site")
-			.map((g) => ({ ...g, icon: resolveGroupIcon(g?.icon) }))
+			.map((g) => ({
+				...g,
+				icon: resolveGroupIcon(g?.icon),
+				items: (data as any)?.consoleWebEnabled === true
+					? (g?.items ?? [])
+					: (g?.items ?? []).filter((i: any) => !isConsoleWebHref(i?.url ?? ""))
+			}))
 	);
 
 	// 展开态：首屏按配置的 collapsed 推导（SSR 与客户端一致），再用本地记忆覆盖。
@@ -168,7 +181,7 @@
 
 	// 「后台」那一格的落点：同样走 $lib/view-switch-nav 的唯一判定，
 	// 免得只有集控权限的人点到一个自己进不去的 /admin（会被 hooks 弹回来）。
-	const adminHref = $derived(adminEntryHref(data.user) ?? "/admin");
+	const adminHref = $derived(adminEntryHref(data.user, (data as any)?.consoleWebEnabled === true) ?? "/admin");
 
 	// 登录页不要后台外壳：它是整屏居中的登录卡片，套在侧栏+顶栏里会被挤到右侧，
 	// 还多出一列「点了就被 hooks 弹回」的导航。
