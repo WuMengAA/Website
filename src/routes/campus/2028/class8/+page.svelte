@@ -26,7 +26,7 @@
   const clsOf = (i: number) => (i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "");
   let openGroup = $state<number | null>(null);
   let subject = $state("全部");
-  const SUBJECTS = ["全部", "语文", "数学", "英语", "物理", "化学", "生物", "政治", "历史", "地理"];
+  const SUBJECTS = ["全部", "语文", "数学", "英语", "物理", "化学", "地理", "俄语"];
   const W = 720, H = 260, PAD = 34;
   const LC = ["#c8542e", "#10b981", "#f59e0b", "#cc785c", "#ef4444", "#14b8a6", "#f43f5e", "#6366f1"];
   function rangeOf() {

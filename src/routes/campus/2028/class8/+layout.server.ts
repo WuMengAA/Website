@@ -8,8 +8,8 @@
  * 未配置密码 = 门禁关闭（降级开放）。
  */
 import { redirect } from "@sveltejs/kit";
-import { seedClass8IfEmpty, ensureRealClass8Data, ensureSportsTimeline } from "$lib/server/class8/class8-seed.js";
-import { fullSnapshot } from "$lib/server/class8/class8-service.js";
+import { seedClass8IfEmpty, ensureRealClass8Data, ensureSportsTimeline, normalizeClass8Names } from "$lib/server/class8/class8-seed.js";
+import { fullSnapshot, ensureEncrypted, ensureRealScores } from "$lib/server/class8/class8-service.js";
 import { gateEnabled, gatePassed } from "$lib/server/class8/class8-auth.js";
 
 const AUTH_PATH = "/campus/2028/class8/auth";
@@ -21,6 +21,9 @@ export const load = async ({ url, cookies }: { url: URL; cookies: { get(name: st
   }
   await seedClass8IfEmpty();
   await ensureRealClass8Data();
+  await normalizeClass8Names();
+  await ensureEncrypted();
+  await ensureRealScores();
   await ensureSportsTimeline();
   return await fullSnapshot();
 };

@@ -218,7 +218,7 @@
   }
 
   // 成绩录入
-  const SUBJECTS = ["语文", "数学", "英语", "物理", "化学", "生物", "政治", "历史", "地理"];
+  const SUBJECTS = ["语文", "数学", "英语", "物理", "化学", "地理", "俄语"];
   let sExam = $state<number | null>(null);
   let sSubject = $state("语文");
   let scoreMap = $state<Record<number, string>>({});

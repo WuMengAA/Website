@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS class8_scores (
   group_id   INTEGER NOT NULL DEFAULT 0,
   member_id  INTEGER NOT NULL DEFAULT 0,
   subject    TEXT NOT NULL DEFAULT '',
-  score      REAL NOT NULL DEFAULT 0
+  -- 成绩为 PII，落盘密文（base64 前缀 v1gcm:）；明文遗留值亦兼容。
+  score      TEXT NOT NULL DEFAULT '0'
 );
 
 CREATE TABLE IF NOT EXISTS class8_stars (
@@ -97,6 +98,11 @@ CREATE TABLE IF NOT EXISTS class8_culture_spots (
   title    TEXT NOT NULL DEFAULT '',
   slogan   TEXT NOT NULL DEFAULT '',
   body     TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS class8_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
 );
 `;
 

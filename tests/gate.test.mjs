@@ -53,7 +53,7 @@ test("正确令牌 → 200 且含门禁内内容", async (t) => {
   const res = await fetch(PAGE, { headers: { Cookie: `c8_gate=${tok}` } });
   assert.equal(res.status, 200);
   const html = await res.text();
-  assert.match(html, /班级总结/, "持有令牌应看到班级总结区块");
+  assert.match(html, /励思笃行/, "持有令牌应看到班级内容（班级口号等）");
   assert.ok(html.length > 50_000, `页面体量异常偏小（${html.length}），可能是残缺壳`);
 });
 

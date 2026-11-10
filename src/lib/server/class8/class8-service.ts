@@ -3,9 +3,15 @@
  *
  * 隐私红线：个人成绩/排名不公开。对外一律按【小组维度】聚合；
  * 个人成绩仅当请求者登录且匹配到本班成员时才单独返回。
+ *
+ * 加密（2026-11）：姓名（members/leaders）与成绩（scores）落盘即密文，
+ * 密钥 CLASS8_ENC_KEY；无前缀值视为遗留明文向后兼容。聚合在应用层解密后计算。
  */
 import { getDb } from "../db.js";
 import { ensureClass8Schema } from "./class8-db.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { encText, decText, encNum, decNum, isEncrypted, encryptionEnabled } from "./class8-crypto.js";
 
 async function db() {
   await ensureClass8Schema();
@@ -49,8 +55,9 @@ export async function listGroups(): Promise<(GroupRow & { members: MemberRow[] }
   const members = await (await db()).prepare("SELECT * FROM class8_members ORDER BY group_id, seq, id").all() as unknown as MemberRow[];
   const byG = new Map<number, MemberRow[]>();
   for (const m of members) {
-    const a = byG.get(m.group_id);
-    if (a) a.push(m); else byG.set(m.group_id, [m]);
+    const mm: MemberRow = Object.assign({}, m, { name: decText(m.name) });
+    const a = byG.get(mm.group_id);
+    if (a) a.push(mm); else byG.set(mm.group_id, [mm]);
   }
   return groups.map(function (g) { return Object.assign({}, g, { members: byG.get(g.id) || [] }); });
 }
@@ -64,10 +71,11 @@ export async function saveGroup(g: { id?: number; seq?: number; name: string; go
 }
 
 export async function saveMember(m: { id?: number; group_id: number; seq?: number; name: string; role?: string; motto?: string; seat?: string }): Promise<void> {
+  const encName = encText(m.name);
   if (m.id) {
-    await (await db()).prepare("UPDATE class8_members SET group_id=?, name=?, role=?, motto=?, seat=? WHERE id=?").run(m.group_id, m.name, m.role || "", m.motto || "", m.seat || "", m.id);
+    await (await db()).prepare("UPDATE class8_members SET group_id=?, name=?, role=?, motto=?, seat=? WHERE id=?").run(m.group_id, encName, m.role || "", m.motto || "", m.seat || "", m.id);
   } else {
-    await (await db()).prepare("INSERT INTO class8_members (group_id, seq, name, role, motto, seat) VALUES (?,?,?,?,?,?)").run(m.group_id, m.seq || 0, m.name, m.role || "", m.motto || "", m.seat || "");
+    await (await db()).prepare("INSERT INTO class8_members (group_id, seq, name, role, motto, seat) VALUES (?,?,?,?,?,?)").run(m.group_id, m.seq || 0, encName, m.role || "", m.motto || "", m.seat || "");
   }
 }
 
@@ -86,26 +94,27 @@ export async function saveExam(e: { id?: number; exam_date: string; title: strin
 
 export async function saveScore(s: { exam_id: number; group_id: number; member_id: number; subject: string; score: number }): Promise<void> {
   await (await db()).prepare("DELETE FROM class8_scores WHERE exam_id=? AND member_id=? AND subject=?").run(s.exam_id, s.member_id, s.subject);
-  await (await db()).prepare("INSERT INTO class8_scores (exam_id, group_id, member_id, subject, score) VALUES (?,?,?,?,?)").run(s.exam_id, s.group_id, s.member_id, s.subject, s.score);
+  await (await db()).prepare("INSERT INTO class8_scores (exam_id, group_id, member_id, subject, score) VALUES (?,?,?,?,?)").run(s.exam_id, s.group_id, s.member_id, s.subject, encNum(s.score));
 }
 
-// ── 小组曲线（隐私安全：只出小组均值）──
+// ── 小组曲线（隐私安全：只出小组均值；应用层解密后聚合）──
 export async function groupCurves(subject?: string): Promise<{ exams: string[]; groups: { id: number; name: string; points: (number | null)[] }[] }> {
   const exams = await listExams();
   const groups = await (await db()).prepare("SELECT id, seq, name, goal FROM class8_groups ORDER BY seq, id").all() as unknown as GroupRow[];
-  const stOne = (await db()).prepare("SELECT AVG(score) AS avg FROM class8_scores WHERE exam_id=? AND group_id=?");
-  const stSub = (await db()).prepare("SELECT AVG(score) AS avg FROM class8_scores WHERE exam_id=? AND group_id=? AND subject=?");
-  const out = await Promise.all(groups.map(async function (g) {
+  const all = (await (await db()).prepare("SELECT exam_id, group_id, subject, score FROM class8_scores").all() as { exam_id: number; group_id: number; subject: string; score: string | number }[])
+    .map(function (s) { return { exam_id: s.exam_id, group_id: s.group_id, subject: s.subject, score: decNum(s.score) }; });
+  const out = groups.map(function (g) {
     return {
       id: g.id,
       name: g.name,
-      points: await Promise.all(exams.map(async function (e) {
-        const r = (subject ? await stSub.get(e.id, g.id, subject) : await stOne.get(e.id, g.id)) as { avg: number | null } | undefined;
-        const v = r && r.avg !== null && r.avg !== undefined ? Number(r.avg) : null;
-        return v === null ? null : Math.round(v * 10) / 10;
-      }))
+      points: exams.map(function (e) {
+        const vals = all.filter(function (s) { return s.exam_id === e.id && s.group_id === g.id && (!subject || s.subject === subject); }).map(function (s) { return s.score; });
+        if (vals.length === 0) return null;
+        const avg = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+        return Math.round(avg * 10) / 10;
+      })
     };
-  }));
+  });
   return { exams: exams.map(function (e) { return e.title || e.exam_date; }), groups: out };
 }
 
@@ -114,18 +123,36 @@ export async function groupRanking(): Promise<{ name: string; avg: number | null
   const exams = await listExams();
   if (exams.length === 0) return [];
   const last = exams[exams.length - 1];
-  const rows = await (await db()).prepare("SELECT g.name AS name, AVG(s.score) AS avg FROM class8_scores s JOIN class8_groups g ON g.id = s.group_id WHERE s.exam_id = ? GROUP BY s.group_id ORDER BY avg DESC").all(last.id) as { name: string; avg: number | null }[];
-  return rows.map(function (r) { return { name: r.name, avg: r.avg === null ? null : Math.round(Number(r.avg) * 10) / 10 }; });
+  const rows = (await (await db()).prepare("SELECT group_id, score FROM class8_scores WHERE exam_id=?").all(last.id) as { group_id: number; score: string | number }[])
+    .map(function (r) { return { group_id: r.group_id, score: decNum(r.score) }; });
+  const byG = new Map<number, number[]>();
+  for (const r of rows) {
+    const a = byG.get(r.group_id) || [];
+    a.push(r.score);
+    byG.set(r.group_id, a);
+  }
+  const groups = await (await db()).prepare("SELECT id, name FROM class8_groups ORDER BY seq, id").all() as { id: number; name: string }[];
+  return groups
+    .map(function (g) {
+      const a = byG.get(g.id) || [];
+      const avg = a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : null;
+      return { name: g.name, avg: avg === null ? null : Math.round(avg * 10) / 10 };
+    })
+    .sort(function (x, y) { return (y.avg ?? -1) - (x.avg ?? -1); });
 }
 
-// 个人曲线：仅登录本人可取（调用方负责鉴权）
+// 个人曲线：仅登录本人可取（调用方负责鉴权）。按「解密后姓名」匹配，避免密文无法等值查询。
 export async function memberCurve(memberName: string): Promise<{ exams: string[]; points: (number | null)[]; rank: number[] }> {
   const exams = await listExams();
-  const st = (await db()).prepare("SELECT AVG(score) AS avg FROM class8_scores s JOIN class8_members m ON m.id = s.member_id WHERE s.exam_id=? AND m.name=?");
+  const members = (await (await db()).prepare("SELECT id, name FROM class8_members").all() as { id: number; name: string }[]);
+  const target = members.find(function (m) { return decText(m.name).trim() === String(memberName).trim(); });
   const points = await Promise.all(exams.map(async function (e) {
-    const r = await st.get(e.id, memberName) as { avg: number | null } | undefined;
-    const v = r && r.avg !== null && r.avg !== undefined ? Number(r.avg) : null;
-    return v === null ? null : Math.round(v * 10) / 10;
+    if (!target) return null;
+    const rows = (await (await db()).prepare("SELECT score FROM class8_scores WHERE exam_id=? AND member_id=?").all(e.id, target.id) as { score: string | number }[])
+      .map(function (r) { return decNum(r.score); });
+    if (rows.length === 0) return null;
+    const avg = rows.reduce(function (a, b) { return a + b; }, 0) / rows.length;
+    return Math.round(avg * 10) / 10;
   }));
   return { exams: exams.map(function (e) { return e.title || e.exam_date; }), points: points, rank: [] };
 }
@@ -175,13 +202,15 @@ export async function saveEvent(e: { id: number; at?: string; title?: string; bo
 
 // ── 学科领航人 ──
 export async function listLeaders(): Promise<LeaderRow[]> {
-  return await (await db()).prepare("SELECT * FROM class8_leaders ORDER BY seq, id").all() as unknown as LeaderRow[];
+  return (await (await db()).prepare("SELECT * FROM class8_leaders ORDER BY seq, id").all() as unknown as LeaderRow[])
+    .map(function (l) { return Object.assign({}, l, { name: decText(l.name) }); });
 }
 export async function saveLeader(l: { id?: number; seq?: number; subject: string; name: string; icon?: string }): Promise<void> {
+  const encName = encText(l.name);
   if (l.id) {
-    await (await db()).prepare("UPDATE class8_leaders SET subject=?, name=?, icon=?, seq=? WHERE id=?").run(l.subject, l.name, l.icon || "", l.seq || 0, l.id);
+    await (await db()).prepare("UPDATE class8_leaders SET subject=?, name=?, icon=?, seq=? WHERE id=?").run(l.subject, encName, l.icon || "", l.seq || 0, l.id);
   } else {
-    await (await db()).prepare("INSERT INTO class8_leaders (seq, subject, name, icon) VALUES (?,?,?,?)").run(l.seq || 0, l.subject, l.name, l.icon || "");
+    await (await db()).prepare("INSERT INTO class8_leaders (seq, subject, name, icon) VALUES (?,?,?,?)").run(l.seq || 0, l.subject, encName, l.icon || "");
   }
 }
 export async function deleteLeader(id: number): Promise<void> { await (await db()).prepare("DELETE FROM class8_leaders WHERE id=?").run(id); }
@@ -220,12 +249,13 @@ export async function listChangelog(limit = 30): Promise<ChangelogRow[]> {
 
 // ── 成绩读取 / 批量写入（管理端成绩录入）──
 export async function listScoresByExam(examId: number): Promise<{ member_id: number; group_id: number; subject: string; score: number }[]> {
-  return await (await db()).prepare("SELECT member_id, group_id, subject, score FROM class8_scores WHERE exam_id=?").all(examId) as unknown as { member_id: number; group_id: number; subject: string; score: number }[];
+  return (await (await db()).prepare("SELECT member_id, group_id, subject, score FROM class8_scores WHERE exam_id=?").all(examId) as unknown as { member_id: number; group_id: number; subject: string; score: string | number }[])
+    .map(function (r) { return { member_id: r.member_id, group_id: r.group_id, subject: r.subject, score: decNum(r.score) }; });
 }
 export async function saveScoresBatch(examId: number, items: { member_id: number; group_id: number; subject: string; score: number }[]): Promise<void> {
   const del = await (await db()).prepare("DELETE FROM class8_scores WHERE exam_id=? AND member_id=? AND subject=?");
   const ins = await (await db()).prepare("INSERT INTO class8_scores (exam_id, group_id, member_id, subject, score) VALUES (?,?,?,?,?)");
-  for (const it of items) { await del.run(examId, it.member_id, it.subject); await ins.run(examId, it.group_id, it.member_id, it.subject, it.score); }
+  for (const it of items) { await del.run(examId, it.member_id, it.subject); await ins.run(examId, it.group_id, it.member_id, it.subject, encNum(it.score)); }
 }
 
 
@@ -279,7 +309,7 @@ export async function importAll(data: any): Promise<void> {
     const newId = Number(r.lastInsertRowid);
     if (g.id !== undefined) gMap.set(g.id, newId);
     for (const m of (g.members || [])) {
-      await (await db()).prepare("INSERT INTO class8_members (group_id, seq, name, role, motto, seat) VALUES (?,?,?,?,?,?)").run(newId, m.seq || 0, m.name || "", m.role || "", m.motto || "", m.seat || "");
+      await (await db()).prepare("INSERT INTO class8_members (group_id, seq, name, role, motto, seat) VALUES (?,?,?,?,?,?)").run(newId, m.seq || 0, encText(m.name || ""), m.role || "", m.motto || "", m.seat || "");
     }
   }
   // exams（id 映射）
@@ -294,13 +324,13 @@ export async function importAll(data: any): Promise<void> {
   for (const sp of (data && data.spots) || []) await saveSpot({ key: sp.key || "", title: sp.title || "", slogan: sp.slogan || "", body: sp.body || "" });
   for (const l of (data && data.leaders) || []) await saveLeader({ subject: l.subject || "", name: l.name || "", icon: l.icon || "", seq: l.seq || 0 });
   for (const r of (data && data.ranks) || []) await saveRank({ group_name: r.group_name || "", avg: Number(r.avg) || 0, honor: r.honor || "", seq: r.seq || 0 });
-  // scores（用 id 映射重建）
+  // scores（用 id 映射重建，成绩加密）
   for (const ex of (data && data.scores) || []) {
     const newExam = eMap.get(Number(ex.exam_id));
     if (newExam === undefined) continue;
     for (const row of (ex.rows || [])) {
       await (await db()).prepare("INSERT INTO class8_scores (exam_id, group_id, member_id, subject, score) VALUES (?,?,?,?,?)")
-        .run(newExam, 0, 0, row.subject || "", Number(row.score) || 0);
+        .run(newExam, Number(row.group_id) || 0, Number(row.member_id) || 0, row.subject || "", encNum(Number(row.score) || 0));
     }
   }
 }
@@ -315,6 +345,12 @@ export async function deleteExam(id: number): Promise<void> {
 export async function importTableRows(kind: string, rows: Record<string, unknown>[]): Promise<{ ok: number; skip: number }> {
   let ok = 0, skip = 0;
   const db3 = await db();
+  // 成绩导入：按「解密姓名」匹配成员（密文无法等值查询）
+  const memberIndex: { id: number; group_id: number; name: string }[] = [];
+  if (kind === "scores") {
+    const ms = (await db3.prepare("SELECT id, group_id, name FROM class8_members").all() as { id: number; group_id: number; name: string }[]);
+    for (const m of ms) memberIndex.push({ id: m.id, group_id: m.group_id, name: decText(m.name).trim() });
+  }
   if (kind === "members") {
     for (const r of rows) {
       const gname = String(r.group || "").trim();
@@ -325,9 +361,9 @@ export async function importTableRows(kind: string, rows: Record<string, unknown
         const ins = await db3.prepare("INSERT INTO class8_groups (seq, name, goal, emoji) VALUES (?,?,?,?)").run(999, gname, "", "");
         g = { id: Number(ins.lastInsertRowid), seq: 999 };
       }
-      const dup = await db3.prepare("SELECT id FROM class8_members WHERE group_id=? AND name=?").get(g.id, mname);
+      const dup = await db3.prepare("SELECT id FROM class8_members WHERE group_id=? AND name=?").get(g.id, encText(mname));
       if (dup) { skip++; continue; }
-      await db3.prepare("INSERT INTO class8_members (group_id, seq, name, role, motto, seat) VALUES (?,?,?,?,?,?)").run(g.id, 0, mname, String(r.role || "组员"), String(r.motto || ""), String(r.seat || ""));
+      await db3.prepare("INSERT INTO class8_members (group_id, seq, name, role, motto, seat) VALUES (?,?,?,?,?,?)").run(g.id, 0, encText(mname), String(r.role || "组员"), String(r.motto || ""), String(r.seat || ""));
       ok++;
     }
   } else if (kind === "stars") {
@@ -362,20 +398,69 @@ export async function importTableRows(kind: string, rows: Record<string, unknown
       ok++;
     }
   } else if (kind === "scores") {
-    const examId = Number(r.exam_id || 0);
-    const subject = String(r.subject || "");
+    const examId = Number((rows[0] && (rows[0] as any).exam_id) || 0);
+    const subject = String((rows[0] && (rows[0] as any).subject) || "");
     if (!examId || !subject) return { ok: 0, skip: rows.length };
     for (const row of rows) {
       const name = String(row.name || "").trim();
       const score = Number(row.score);
       if (!name || Number.isNaN(score)) { skip++; continue; }
-      const m = await db3.prepare("SELECT id, group_id FROM class8_members WHERE name=?").get(name) as unknown as { id: number; group_id: number } | undefined;
+      const m = memberIndex.find(function (x) { return x.name === name; });
       if (!m) { skip++; continue; }
-      await db3.prepare("INSERT INTO class8_scores (exam_id, group_id, member_id, subject, score) VALUES (?,?,?,?,?)").run(examId, m.group_id, m.id, subject, score);
+      await db3.prepare("INSERT INTO class8_scores (exam_id, group_id, member_id, subject, score) VALUES (?,?,?,?,?)").run(examId, m.group_id, m.id, subject, encNum(score));
       ok++;
     }
   }
   return { ok, skip };
+}
+
+// ── 启动期迁移：把遗留明文就地加密（幂等，仅在配置了密钥时执行）──
+export async function ensureEncrypted(): Promise<void> {
+  if (!encryptionEnabled()) return;
+  const d = await db();
+  const ms = (await d.prepare("SELECT id, name FROM class8_members").all() as { id: number; name: string }[]);
+  for (const m of ms) if (!isEncrypted(m.name)) await d.prepare("UPDATE class8_members SET name=? WHERE id=?").run(encText(m.name), m.id);
+  const ls = (await d.prepare("SELECT id, name FROM class8_leaders").all() as { id: number; name: string }[]);
+  for (const l of ls) if (!isEncrypted(l.name)) await d.prepare("UPDATE class8_leaders SET name=? WHERE id=?").run(encText(l.name), l.id);
+  const ss = (await d.prepare("SELECT id, score FROM class8_scores").all() as { id: number; score: string | number }[]);
+  for (const s of ss) if (!isEncrypted(s.score)) await d.prepare("UPDATE class8_scores SET score=? WHERE id=?").run(encNum(typeof s.score === "number" ? s.score : parseFloat(String(s.score))), s.id);
+}
+
+// ── 启动期：导入真实月考成绩（替换假成绩），幂等（class8_meta 标记）──
+export async function ensureRealScores(): Promise<void> {
+  const d = await db();
+  const flagRow = (await d.prepare("SELECT value FROM class8_meta WHERE key=?").get("real_scores_v1")) as { value: string } | undefined;
+  if (flagRow && flagRow.value === "1") return; // 已导入
+  const src = process.env.CLASS8_SCORES_SRC || path.join(process.cwd(), "class8-data", "exam-real-scores.json");
+  let data: { subjects: string[]; rows: { name: string; scores: (number | null)[] }[] };
+  try {
+    data = JSON.parse(fs.readFileSync(src, "utf8"));
+  } catch {
+    return; // 无源文件 → 跳过（不阻断启动，也不清空现有成绩）
+  }
+  const exams = await listExams();
+  const examId = exams[0]?.id;
+  if (!examId) return;
+  const members = (await d.prepare("SELECT id, group_id, name FROM class8_members").all() as { id: number; group_id: number; name: string }[]);
+  const byName = new Map<string, { id: number; group_id: number }>();
+  for (const m of members) byName.set(decText(m.name).trim(), { id: m.id, group_id: m.group_id });
+
+  const del = await d.prepare("DELETE FROM class8_scores WHERE exam_id=?");
+  await del.run(examId);
+  const ins = await d.prepare("INSERT INTO class8_scores (exam_id, group_id, member_id, subject, score) VALUES (?,?,?,?,?)");
+  let matched = 0, unmatched = 0;
+  for (const r of data.rows) {
+    const mm = byName.get(r.name.trim());
+    if (!mm) { unmatched++; console.warn("[class8] 真实成绩导入：未匹配成员", r.name); continue; }
+    data.subjects.forEach(function (sub, i) {
+      const v = r.scores[i];
+      if (v === null || v === undefined || Number.isNaN(v)) return;
+      ins.run(examId, mm.group_id, mm.id, sub, encNum(v));
+    });
+    matched++;
+  }
+  await d.prepare("INSERT OR REPLACE INTO class8_meta (key, value) VALUES (?,?)").run("real_scores_v1", "1");
+  console.log("[class8] 真实成绩导入完成：匹配 " + matched + " 人，未匹配 " + unmatched + " 人");
 }
 
 // ── 全量快照（公开页与后台共用）──

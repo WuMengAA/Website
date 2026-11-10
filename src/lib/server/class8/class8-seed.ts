@@ -5,6 +5,7 @@
  */
 import { getDb } from "../db.js";
 import { ensureClass8Schema } from "./class8-db.js";
+import { encText, decText } from "./class8-crypto.js";
 
 const GROUP_NAMES = ["青竹组", "星火组", "澜溪组", "破晓组", "砺行组", "拾光组", "远航组", "晴岚组"];
 const GROUP_GOALS = [
@@ -17,7 +18,8 @@ const GROUP_GOALS = [
   "英语单词打卡全组满勤",
   "理综实验题专项突破"
 ];
-const SUBJECTS = ["语文", "数学", "英语", "物理", "化学", "生物", "政治", "历史", "地理"];
+// 本班真实学科（7 科；英语/俄语为分语种小班；不含生物/政治/历史）
+const SUBJECTS = ["语文", "数学", "英语", "物理", "化学", "地理", "俄语"];
 // 考试次数：2026-10-22 用户要求 4→1。保留「第一次月考」。
 const EXAMS = [
   { title: "第一次月考", exam_date: "2026-09-12", seq: 1 }
@@ -129,10 +131,10 @@ export async function ensureRealClass8Data(): Promise<void> {
       { emoji: "🔥", name: "光宗耀组", goal: "组内互查作业，月考小组均分进前三", leader: "胡宇鹏", members: ["徐佳恒", "刘梓湘", "杨姿涵", "李佳妮", "李思怡", "焦天赐", "胡宇鹏"] },
       { emoji: "🌧️", name: "风雨无组", goal: "风雨无阻，全员满勤", leader: "", members: ["陈昊泽", "罗怡冉", "张思远", "王嘉宁", "秦梓涵", "王璐彤"] },
       { emoji: "🏆", name: "名门望组", goal: "结对帮扶，不让一个人掉队", leader: "", members: ["张跃航", "史雨欣", "徐俊东", "任乔安", "元胜杰", "李昱莹"] },
-      { emoji: "🪶", name: "少羽组", goal: "错题共享，建立小组错题本", leader: "张鹏俊", members: ["张鹏俊", "宋薇", "温涵瑞", "刘赵哲", "吕梦欣", "刘奕洋"] },
+      { emoji: "🪶", name: "少羽组", goal: "错题共享，建立小组错题本", leader: "张彭俊", members: ["张彭俊", "宋薇", "温涵瑞", "刘赵哲", "吕梦欣", "刘奕洋"] },
       { emoji: "💎", name: "琢玉组", goal: "如琢如磨，精进不止", leader: "", members: ["何奥杰", "李欣茹", "秦琳清", "张梦佳", "任梓涵", "董雯玉"] },
-      { emoji: "🙏", name: "如来佛组", goal: "课堂发言人均每周三次", leader: "杨智杰", members: ["雷艺涵", "徐欣然", "王馨雨", "东祎璐", "杨智杰", "董昊燃", "杨玉辉"] },
-      { emoji: "🧠", name: "没哲组", goal: "英语单词打卡全组满勤", leader: "", members: ["杨家辉", "魏宁宁", "高慧妍", "耿子杰", "刘腾飞", "孙浩楠"] },
+      { emoji: "🙏", name: "如来佛组", goal: "课堂发言人均每周三次", leader: "杨智杰", members: ["雷艺含", "徐欣然", "王馨雨", "东祎璐", "杨智杰", "董昊燃", "白杨玉辉"] },
+      { emoji: "🧠", name: "没哲组", goal: "英语单词打卡全组满勤", leader: "", members: ["杨佳辉", "魏宁宁", "高惠妍", "耿子杰", "刘腾飞", "孙浩楠"] },
       { emoji: "✨", name: "无言组", goal: "与光同尘，行者无疆", leader: "王博泽", members: ["王博泽", "麻皓哲", "陈嘉威", "李昊轩", "高怡鑫", "雷超越"] }
     ];
     const insG = await db.prepare("INSERT INTO class8_groups (seq, name, goal, emoji) VALUES (?,?,?,?)");
@@ -142,31 +144,10 @@ export async function ensureRealClass8Data(): Promise<void> {
       const gid = Number(r.lastInsertRowid);
       g.members.forEach(async function (m, mi) {
         const isLeader = m === g.leader;
-        await insM.run(gid, mi + 1, m, isLeader ? "组长" : (mi === 1 ? "学科小组长" : "组员"), "", "");
+        await insM.run(gid, mi + 1, encText(m), isLeader ? "组长" : (mi === 1 ? "学科小组长" : "组员"), "", "");
       });
     });
 
-    // 重建占位成绩（真实组名，9 学科 × 4 考试，供学业曲线可视化；可在后台逐科覆盖）
-    const SUBJECTS = ["语文", "数学", "英语", "物理", "化学", "生物", "政治", "历史", "地理"];
-    const gids = (await db.prepare("SELECT id FROM class8_groups ORDER BY seq").all() as { id: number }[]).map(function (x) { return x.id; });
-    const mids = (await db.prepare("SELECT id, group_id FROM class8_members ORDER BY id").all() as { id: number; group_id: number }[]);
-    const exams = (await db.prepare("SELECT id FROM class8_exams ORDER BY seq").all() as { id: number }[]);
-    let s = 20280927;
-    function rnd(): number { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; }
-    const gBias: Record<number, number> = {};
-    gids.forEach(function (id, i) { gBias[id] = (i - 3.5) * 0.9; });
-    const insS = await db.prepare("INSERT INTO class8_scores (exam_id, group_id, member_id, subject, score) VALUES (?,?,?,?,?)");
-    exams.forEach(async function (e) {
-      gids.forEach(function (gid) {
-        mids.filter(function (m) { return m.group_id === gid; }).forEach(function (m) {
-          SUBJECTS.forEach(async function (sub) {
-            const base = 72 + await rnd() * 18 + (gBias[gid] || 0);
-            const v = Math.max(48, Math.min(99, Math.round(base * 10) / 10));
-            await insS.run(e.id, gid, m.id, sub, v);
-          });
-        });
-      });
-    });
   }
 
   // 旧种子清理（一次性、幂等）：2026-10-22 用户要求考试次数 4→1。
@@ -186,7 +167,7 @@ export async function ensureRealClass8Data(): Promise<void> {
   // 学科领航人（幂等：空则灌）
   if ((await db.prepare("SELECT COUNT(*) AS n FROM class8_leaders").get() as { n: number }).n === 0) {
     const insL = await db.prepare("INSERT INTO class8_leaders (seq, subject, name, icon) VALUES (?,?,?,?)");
-    [["语文", "胡宇鹏", "📖"], ["数学", "王博泽", "🧮"], ["英语", "董昊燃", "🔤"], ["俄语", "杨智杰", "🇷🇺"], ["地理", "李昊轩", "🌍"], ["物理", "雷超越", "⚡"], ["化学", "张鹏俊", "🧪"]].forEach(async function (l, i) { await insL.run(i + 1, l[0], l[1], l[2]); });
+    [["语文", "胡宇鹏", "📖"], ["数学", "王博泽", "🧮"], ["英语", "董昊燃", "🔤"], ["俄语", "杨智杰", "🇷🇺"], ["地理", "李昊轩", "🌍"], ["物理", "雷超越", "⚡"], ["化学", "张彭俊", "🧪"]].forEach(async function (l, i) { await insL.run(i + 1, l[0], encText(l[1]), l[2]); });
   }
 
   // 官方排名（幂等：空则灌）
@@ -233,4 +214,28 @@ export async function ensureSportsTimeline(): Promise<void> {
     }
   ];
   for (const e of evs) await ins.run(e.at, e.title, e.body, JSON.stringify(e.photos));
+}
+
+// ── 姓名纠偏（幂等）：修正与本班真实花名册/成绩单不符的笔误，并清理首尾空格 ──
+// 权威来源：班主任提供的花名册(xlsx) 与 月考成绩(pdf)，二者拼写一致。
+const NAME_FIX: Record<string, string> = {
+  "高慧妍": "高惠妍",
+  "杨家辉": "杨佳辉",
+  "雷艺涵": "雷艺含",
+  "杨玉辉": "白杨玉辉",
+  "张鹏俊": "张彭俊"
+};
+
+export async function normalizeClass8Names(): Promise<void> {
+  await ensureClass8Schema();
+  const db = getDb();
+  for (const table of ["class8_members", "class8_leaders"]) {
+    const rows = (await db.prepare(`SELECT id, name FROM ${table}`).all() as { id: number; name: string }[]);
+    for (const r of rows) {
+      let n = decText(r.name).trim();
+      if (NAME_FIX[n]) n = NAME_FIX[n];
+      const fixed = encText(n);
+      if (fixed !== r.name) await db.prepare(`UPDATE ${table} SET name=? WHERE id=?`).run(fixed, r.id);
+    }
+  }
 }

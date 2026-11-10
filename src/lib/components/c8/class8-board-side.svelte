@@ -9,7 +9,7 @@
     { key: "autonomy", label: "班级自治", icon: "📚", items: [
       { label: "班级公约", href: "/campus/2028/class8/rules" },
       { label: "小组自治", href: "/campus/2028/class8/groups" },
-      { label: "学业追踪", href: "/campus/2028/class8/academics" },
+      { label: "学业追踪", href: "/campus/2028/class8#sec-acad" },
       { label: "成长看板", href: "/campus/2028/class8/growth" }
     ] },
     { key: "showcase", label: "班级展示", icon: "🏅", items: [
