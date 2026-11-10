@@ -1,6 +1,7 @@
 <script lang="ts">
   import { reveal } from "$lib/actions/reveal.js";
   import { page } from "$app/state";
+  import { tick } from "svelte";
 
   type D = {
     profile: { class_name: string; slogan: string; concept: string; intro: string; teacher: string; quote: string; subtitle: string };
@@ -43,7 +44,42 @@
     }).filter(Boolean).join(" ");
   }
   const xAxis = (i: number, n: number) => PAD + (i / Math.max(1, n - 1)) * (W - PAD * 2);
-  const NAV_ITEMS: [string, string][] = [["#sec-hero", "概况"], ["#sec-rules", "公约"], ["#sec-leaders", "领航人"], ["#sec-groups", "小组"], ["#sec-rank", "排行"], ["#sec-acad", "学业"], ["#sec-exam", "成绩"], ["#sec-growth", "成长"], ["#sec-sports", "运动会"], ["#sec-moments", "瞬间"], ["#sec-culture", "文化"], ["#sec-wall", "后墙"], ["#sec-quote", "寄语"]];
+  // ── 整页分 Tab（分页优化）：4 个主题 Tab，取代原 13 锚点长滚动 ──
+  type TabId = "overview" | "academic" | "moments" | "wall";
+  const TABS: { id: TabId; label: string }[] = [
+    { id: "overview", label: "班级总览" },
+    { id: "academic", label: "学业追踪" },
+    { id: "moments", label: "班级风采" },
+    { id: "wall", label: "班级后墙" }
+  ];
+  // 锚点 → Tab 映射，用于深链 / 哈希自动切换
+  const SECTION_TAB: Record<string, TabId> = {
+    "sec-hero": "overview", "sec-rules": "overview", "sec-leaders": "overview",
+    "sec-groups": "overview", "sec-culture": "overview", "sec-quote": "overview",
+    "sec-rank": "academic", "sec-acad": "academic", "sec-exam": "academic", "sec-growth": "academic",
+    "sec-sports": "moments", "sec-moments": "moments",
+    "sec-wall": "wall"
+  };
+  let activeTab = $state<TabId>("overview");
+  async function setTab(t: TabId, scrollTarget?: string) {
+    activeTab = t;
+    await tick();
+    if (scrollTarget) {
+      const el = document.getElementById(scrollTarget);
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+    }
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+  // 深链 / 锚点：进入或哈希变化时自动切到对应 Tab 并滚动到锚点
+  $effect(() => {
+    const sync = () => {
+      const h = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+      if (h && SECTION_TAB[h]) setTab(SECTION_TAB[h], h);
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  });
   const rules: string[] = ["入室即静，入座即学", "按时到班，不迟到不早退", "作业独立完成，不抄不拖", "值日尽责，工具归位", "课堂积极思考，勇于发言", "同学互助，不嘲笑不孤立", "手机不进教室，专注学习", "爱护公物，节约水电"];
   const timetable: [string, string][] = [["7:30", "早读"], ["8:00-8:45", "第一节"], ["9:00-9:45", "第二节"], ["10:00-10:45", "第三节"], ["11:00-11:45", "第四节"], ["14:00-14:45", "第五节"], ["15:00-15:45", "第六节"], ["16:00-16:45", "第七节"]];
   const CULT_ICONS: Record<string, string> = { entry: "🚪", south_wall: "🧲", north_wall: "📢", back_wall: "📊", water: "💧", ac: "❄️", hygiene: "🧹" };
@@ -277,12 +313,19 @@
     else if (e.key === "ArrowLeft") { e.preventDefault(); wallLbPrev(); }
   }
 }} />
-<nav class="sec-nav">
-  {#each NAV_ITEMS as item (item[0])}
-    <a class="nav-pill" href={item[0]}>{item[1]}</a>
+<div class="tabbar" role="tablist" aria-label="班级板块切换">
+  {#each TABS as t (t.id)}
+    <button
+      class="tab"
+      class:active={activeTab === t.id}
+      role="tab"
+      aria-selected={activeTab === t.id}
+      onclick={() => setTab(t.id)}
+    >{t.label}</button>
   {/each}
-</nav>
+</div>
 
+{#if activeTab === "overview"}
 <section id="sec-hero" class="hero">
   <div class="hero-left">
     <div use:reveal class="reveal eyebrow" style="--reveal-delay:0">{d?.profile?.concept ?? "2028届 · 高二 · 班级文化建设"}</div>
@@ -371,7 +414,9 @@
     {/each}
   </div>
 </section>
+{/if}
 
+{#if activeTab === "academic"}
 <section id="sec-rank" class="sec">
   <div use:reveal class="reveal sec-head">
     <span class="sec-no">04 · 荣耀时刻</span>
@@ -511,7 +556,9 @@
     </div>
   </div>
 </section>
+{/if}
 
+{#if activeTab === "moments"}
 <section id="sec-sports" class="sec">
   <div use:reveal class="reveal sec-head">
     <span class="sec-no">08 · 运动会</span>
@@ -577,7 +624,9 @@
     </div>
   {/each}
 </section>
+{/if}
 
+{#if activeTab === "overview"}
 <section id="sec-culture" class="sec">
   <div use:reveal class="reveal sec-head">
     <span class="sec-no">10 · 文化点位</span>
@@ -592,7 +641,9 @@
     {/each}
   </div>
 </section>
+{/if}
 
+{#if activeTab === "wall"}
 <section id="sec-wall" class="sec">
   <div use:reveal class="reveal sec-head">
     <span class="sec-no">11 · 班级后墙</span>
@@ -620,7 +671,9 @@
     {/each}
   </div>
 </section>
+{/if}
 
+{#if activeTab === "overview"}
 <section id="sec-quote" class="sec">
   <div use:reveal class="reveal sec-head">
     <span class="sec-no">12 · 班级寄语</span>
@@ -636,6 +689,7 @@
     <div use:reveal class="reveal fact"><b>{d?.leaders?.length ?? 0}</b><span>学科领航人</span></div>
   </div>
 </section>
+{/if}
 <!-- 全屏幻灯片 -->
 {#if slide}
   <div class="lightbox" role="dialog" aria-modal="true" ontouchstart={onTouchStart} ontouchend={onTouchEnd} onclick={closeSlide}>
@@ -727,11 +781,11 @@
   </div>
 {/if}
 <style>
-  .sec-nav { position: sticky; top: 0; z-index: 30; display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0; background: rgba(250,246,238,.92); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(42,38,32,.1); }
-  .nav-pill { padding: 5px 13px; border-radius: 999px; font-size: .8rem; color: #4a443c; text-decoration: none; transition: background .25s, color .25s; }
-  .nav-pill:hover { background: #f3ecdd; color: #2a2620; }
-  .nav-pill:active { background: rgba(200,84,46,.16); }
-  .nav-pill:focus-visible { outline: 2px solid #c8542e; outline-offset: 2px; }
+  .tabbar { position: sticky; top: 0; z-index: 30; display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0; background: rgba(250,246,238,.94); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(42,38,32,.1); }
+  .tab { padding: 6px 16px; border-radius: 999px; font-family: var(--font-heading); font-weight: 600; font-size: .82rem; color: #4a443c; background: transparent; border: 1px solid transparent; cursor: pointer; transition: background .25s, color .25s, border-color .25s, box-shadow .25s; }
+  .tab:hover { background: #f3ecdd; color: #2a2620; }
+  .tab.active { background: #c8542e; color: #fffdf7; box-shadow: 0 8px 18px -12px rgba(200,84,46,.8); }
+  .tab:focus-visible { outline: 2px solid #c8542e; outline-offset: 2px; }
   .eyebrow { display: inline-flex; align-items: center; gap: .6rem; font-size: .72rem; letter-spacing: .18em; text-transform: uppercase; color: #8a8178; font-weight: 500; margin-bottom: .8rem; }
   .eyebrow::before { content: ""; width: 1.6rem; height: 1px; background: #c8542e; }
   .hero { display: grid; grid-template-columns: 1.25fr 1fr; gap: 2rem; align-items: center; padding: 1.6rem 0 1.2rem; }
@@ -742,7 +796,7 @@
   .stat { padding: .8rem 1rem; background: #fffdf7; border: 1px solid rgba(42,38,32,.1); border-radius: .7rem; } .stat b { display: block; font-family: var(--font-heading); font-size: 1.45rem; font-weight: 700; }
   .stat span { font-size: .78rem; color: #8a8178; }
   .hero-draw { width: 100%; margin-top: 1rem; }
-  .sec { padding: 2rem 0 1.8rem; border-top: 1px solid rgba(42,38,32,.1); scroll-margin-top: 52px; }
+  .sec { padding: 2rem 0 1.8rem; border-top: 1px solid rgba(42,38,32,.1); scroll-margin-top: 60px; }
   .sec-head { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .9rem; }
   .sec-no { font-size: .75rem; font-weight: 700; letter-spacing: .18em; color: #c8542e; }
   .h-serif { font-family: var(--font-heading); font-size: clamp(1.5rem, 3.6vw, 2.1rem); font-weight: 700; letter-spacing: -.01em; margin: 0; }
