@@ -62,6 +62,9 @@
     "sec-wall": "wall"
   };
   let activeTab = $state<TabId>("overview");
+  // 成绩看板弹层：scoreOpen 控制开合，scoreTab 切换「月考 / 期末」
+  let scoreOpen = $state(false);
+  let scoreTab = $state<"monthly" | "final">("monthly");
   async function setTab(t: TabId, scrollTarget?: string) {
     activeTab = t;
     await tick();
@@ -100,7 +103,6 @@
     const t2 = setTimeout(reveal, 420); // 覆盖 if 块挂载后稍晚出现的元素
     return () => { clearTimeout(t1); clearTimeout(t2); };
   });
-  const rules: string[] = ["入室即静，入座即学", "按时到班，不迟到不早退", "作业独立完成，不抄不拖", "值日尽责，工具归位", "课堂积极思考，勇于发言", "同学互助，不嘲笑不孤立", "手机不进教室，专注学习", "爱护公物，节约水电"];
   const timetable: [string, string][] = [["7:30", "早读"], ["8:00-8:45", "第一节"], ["9:00-9:45", "第二节"], ["10:00-10:45", "第三节"], ["11:00-11:45", "第四节"], ["14:00-14:45", "第五节"], ["15:00-15:45", "第六节"], ["16:00-16:45", "第七节"]];
   const CULT_ICONS: Record<string, string> = { entry: "🚪", south_wall: "🧲", north_wall: "📢", back_wall: "📊", water: "💧", ac: "❄️", hygiene: "🧹" };
   const STAR_COLORS: Record<string, string> = { "学业进步": "#c8542e", "作业优秀": "#10b981", "值日尽责": "#f59e0b", "互助奉献": "#cc785c", "课堂活跃": "#f43f5e" };
@@ -352,7 +354,6 @@
     <div use:reveal class="reveal eyebrow" style="--reveal-delay:0">{d?.profile?.concept ?? "2028届 · 高二 · 班级文化建设"}</div>
     <h1 use:reveal class="reveal reveal-mask hero-title" style="--reveal-delay:1">{d?.profile?.class_name ?? "2028届8班"}</h1>
     <p use:reveal class="reveal hero-slogan" style="--reveal-delay:2">{d?.profile?.slogan ?? "励思笃行，八班同行，格物拓疆，聚力争强"}</p>
-    <p use:reveal class="reveal hero-intro" style="--reveal-delay:3">{d?.profile?.intro ?? ""}</p>
   </div>
   <div class="hero-right">
     <div use:reveal class="reveal hero-stats" style="--reveal-delay:3">
@@ -367,15 +368,9 @@
 
 <section id="sec-rules" class="sec">
   <div use:reveal class="reveal sec-head">
-    <span class="sec-no">01 · 班级公约</span>
-    <h2 class="h-serif">八条约定，共同遵守</h2>
+    <span class="sec-no">01 · 每日作息</span>
+    <h2 class="h-serif">一日之计，始于规律</h2>
   </div>
-  <div class="rules-grid">
-    {#each rules as r, i (r)}
-      <div use:reveal class="reveal-wipe rule-card" style="--reveal-delay:{1 + (i % 4)}"><span class="rule-no">{i + 1}</span><span>{r}</span></div>
-    {/each}
-  </div>
-  <h3 class="h-sub">每日作息</h3>
   <div class="timetable">
     {#each timetable as row (row[0])}
       <div class="tt-row"><span class="tt-time">{row[0]}</span><span>{row[1]}</span></div>
@@ -442,18 +437,15 @@
 {#if activeTab === "academic"}
 <section id="sec-rank" class="sec">
   <div use:reveal class="reveal sec-head">
-    <span class="sec-no">04 · 荣耀时刻</span>
-    <h2 class="h-serif">期末平均分排行</h2>
+    <span class="sec-no">04 · 成绩看板</span>
+    <h2 class="h-serif">月考 · 期末 · 一屏切换</h2>
+    <p class="sec-sub">点击打开成绩看板，顶部可切换【第一次月考｜上学期期末】。仅展示班级整体与小组维度，不显示个人成绩与姓名。</p>
   </div>
-  <div class="rank">
-    {#each d?.ranks ?? [] as r, i (r.id)}
-      <div use:reveal class="reveal rank-row {clsOf(i)}" style="--reveal-delay:{i + 1}">
-        <span class="r-medal">{medalOf(i)}</span><span class="r-name">{r.group_name}</span>
-        <div class="r-bar"><i class="fill" style="--w:{pct(r.avg)}%"></i></div>
-        <span class="r-avg">{r.avg.toFixed(2)}</span><span class="r-honor">{r.honor}</span>
-      </div>
-    {/each}
-  </div>
+  <button use:reveal class="reveal score-open" onclick={() => { scoreTab = "monthly"; scoreOpen = true; }}>
+    <span class="score-open-ico">📊</span>
+    <span class="score-open-txt"><b>打开成绩看板</b><i>第一次月考 · 班级总结　｜　上学期期末 · 小组排行</i></span>
+    <span class="score-open-arr">→</span>
+  </button>
 </section>
 
 <section id="sec-acad" class="sec">
@@ -474,7 +466,7 @@
       </div>
     </div>
   <div class="chart-wrap">
-    {#if (d?.curves?.exams ?? []).length > 0}
+    {#if (d?.curves?.exams ?? []).length > 1}
       <svg class="chart" viewBox="0 0 720 260" preserveAspectRatio="none">
         {#each d?.curves?.groups ?? [] as g, i (g.id)}
           <polyline points={linePoints(g.points)} fill="none" stroke={LC[i % LC.length]} stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
@@ -486,86 +478,17 @@
     {:else}
       <div class="chart-empty">
         <span>📊</span>
-        <b>本学期暂无考试成绩录入</b>
-        <i>班主任在后台「成绩批量录入」添加考试与分数后，这里自动生成趋势曲线。</i>
+        <b>当前仅 1 次考试成绩</b>
+        <i>趋势曲线需要 ≥ 2 次考试才能连成曲线。录入下一次月考 / 期末后，这里会自动生成各组成长趋势。</i>
       </div>
     {/if}
   </div>
   </div>
 </section>
 
-<section id="sec-exam" class="sec">
-  <div use:reveal class="reveal sec-head">
-    <span class="sec-no">06 · 月考成绩</span>
-    <h2 class="h-serif">第一次月考 · 班级总结</h2>
-    <p class="sec-sub">共 {d?.examSummary?.n ?? 0} 人 · 仅展示整体统计，不显示个人成绩与姓名。</p>
-  </div>
-  <div class="exam-stats">
-    <div class="exam-stat"><b>{d?.examSummary?.n ?? 0}</b><span>参考人数</span></div>
-    <div class="exam-stat"><b>{d?.examSummary?.avgTotal ?? 0}</b><span>平均总分</span></div>
-    <div class="exam-stat"><b>{d?.examSummary?.maxTotal ?? 0}</b><span>最高总分</span></div>
-    <div class="exam-stat"><b>{d?.examSummary?.minTotal ?? 0}</b><span>最低总分</span></div>
-  </div>
-  <div class="exam-grid">
-    <div class="panel">
-      <h3 class="h-sub">总分分布</h3>
-      <div class="bchart">
-        {#each d?.examSummary?.totalBuckets ?? [] as b}
-          {@const w = (b.count / maxCount(d?.examSummary?.totalBuckets)) * 100}
-          <div class="brow">
-            <span class="blabel">{b.label}</span>
-            <span class="btrack"><i class="bfill" use:reveal style="--w:{w}%"></i></span>
-            <span class="bval">{b.count} 人</span>
-          </div>
-        {/each}
-      </div>
-    </div>
-    <div class="panel">
-      <h3 class="h-sub">各科平均分</h3>
-      <div class="bchart">
-        {#each d?.examSummary?.subjectAvgs ?? [] as s}
-          {@const w = (s.avg / maxAvg(d?.examSummary?.subjectAvgs)) * 100}
-          <div class="brow">
-            <span class="blabel">{s.subject}{s.n < (d?.examSummary?.n ?? 0) ? ` (${s.n}人)` : ""}</span>
-            <span class="btrack"><i class="bfill" use:reveal style="--w:{w}%"></i></span>
-            <span class="bval">{s.avg}</span>
-          </div>
-        {/each}
-      </div>
-      <p class="chart-note">各科满分不同，此处为原始平均分；英语 / 俄语为分语种小班。</p>
-    </div>
-  </div>
-</section>
+<!-- 06 · 月考成绩 已移入「成绩看板」弹层（见页面底部 overlay） -->
 
-<section id="sec-growth" class="sec">
-  <div use:reveal class="reveal sec-head">
-    <span class="sec-no">07 · 成长看板</span>
-    <h2 class="h-serif">星光榜 · 大事记</h2>
-  </div>
-  <div class="growth-grid">
-    <div use:reveal class="reveal panel" style="--reveal-delay:1">
-      <h3 class="h-sub">月度星光榜</h3>
-      <div class="star-grid">
-        {#each d?.stars ?? [] as s (s.id)}
-          <div class="star-card">
-            <span class="star-badge" style="background:{starColor(s.category)}">{s.category}</span>
-            <b>{s.subject}</b><span class="star-reason">{s.reason}</span><span class="star-month">{s.month}</span>
-          </div>
-        {/each}
-      </div>
-    </div>
-    <div use:reveal class="reveal panel" style="--reveal-delay:2">
-      <h3 class="h-sub">班级大事记</h3>
-      <div class="timeline">
-        {#each d?.events ?? [] as e (e.id)}
-          {#if !(e.title && e.title.includes("运动会"))}
-          <div class="tl-item"><span class="tl-dot"></span><div class="tl-body"><b>{e.title}</b><span class="tl-at">{e.at}</span><p>{e.body}</p></div></div>
-          {/if}
-        {/each}
-      </div>
-    </div>
-  </div>
-</section>
+<!-- 07 · 成长看板（星光榜·大事记）已移至「班级风采」Tab -->
 {/if}
 
 {#if activeTab === "moments"}
@@ -633,6 +556,36 @@
       </div>
     </div>
   {/each}
+</section>
+
+<section id="sec-stars" class="sec">
+  <div use:reveal class="reveal sec-head">
+    <span class="sec-no">13 · 成长记录</span>
+    <h2 class="h-serif">星光榜 · 大事记</h2>
+  </div>
+  <div class="growth-grid">
+    <div use:reveal class="reveal panel" style="--reveal-delay:1">
+      <h3 class="h-sub">月度星光榜</h3>
+      <div class="star-grid">
+        {#each d?.stars ?? [] as s (s.id)}
+          <div class="star-card">
+            <span class="star-badge" style="background:{starColor(s.category)}">{s.category}</span>
+            <b>{s.subject}</b><span class="star-reason">{s.reason}</span><span class="star-month">{s.month}</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+    <div use:reveal class="reveal panel" style="--reveal-delay:2">
+      <h3 class="h-sub">班级大事记</h3>
+      <div class="timeline">
+        {#each d?.events ?? [] as e (e.id)}
+          {#if !(e.title && e.title.includes("运动会"))}
+          <div class="tl-item"><span class="tl-dot"></span><div class="tl-body"><b>{e.title}</b><span class="tl-at">{e.at}</span><p>{e.body}</p></div></div>
+          {/if}
+        {/each}
+      </div>
+    </div>
+  </div>
 </section>
 {/if}
 
@@ -788,6 +741,73 @@
       />
     </div>
     <p class="wall-pano-hint">{panoFit ? "整幅缩放全览 · 点「看细节」可横向滚动逐段读" : "横向拖动 / 滚动查看全景 · Esc 关闭"}</p>
+  </div>
+{/if}
+
+<!-- 成绩看板弹层：月考 + 期末，一屏切换 -->
+{#if scoreOpen}
+  <div class="score-lb" role="dialog" aria-modal="true" onclick={() => (scoreOpen = false)}>
+    <div class="score-panel" onclick={(e) => e.stopPropagation()}>
+      <div class="score-head">
+        <span class="score-title">📊 成绩看板</span>
+        <div class="score-switch" role="tablist">
+          <button class:on={scoreTab === "monthly"} role="tab" aria-selected={scoreTab === "monthly"} onclick={() => (scoreTab = "monthly")}>第一次月考</button>
+          <button class:on={scoreTab === "final"} role="tab" aria-selected={scoreTab === "final"} onclick={() => (scoreTab = "final")}>上学期期末</button>
+        </div>
+        <button class="score-close" aria-label="关闭" onclick={() => (scoreOpen = false)}>×</button>
+      </div>
+      <div class="score-body">
+        {#if scoreTab === "monthly"}
+          <p class="score-sub">共 {d?.examSummary?.n ?? 0} 人 · 仅展示整体统计，不显示个人成绩与姓名。</p>
+          <div class="exam-stats">
+            <div class="exam-stat"><b>{d?.examSummary?.n ?? 0}</b><span>参考人数</span></div>
+            <div class="exam-stat"><b>{d?.examSummary?.avgTotal ?? 0}</b><span>平均总分</span></div>
+            <div class="exam-stat"><b>{d?.examSummary?.maxTotal ?? 0}</b><span>最高总分</span></div>
+            <div class="exam-stat"><b>{d?.examSummary?.minTotal ?? 0}</b><span>最低总分</span></div>
+          </div>
+          <div class="exam-grid">
+            <div class="panel">
+              <h3 class="h-sub">总分分布</h3>
+              <div class="bchart">
+                {#each d?.examSummary?.totalBuckets ?? [] as b}
+                  {@const w = (b.count / maxCount(d?.examSummary?.totalBuckets)) * 100}
+                  <div class="brow">
+                    <span class="blabel">{b.label}</span>
+                    <span class="btrack"><i class="bfill revealed" style="--w:{w}%"></i></span>
+                    <span class="bval">{b.count} 人</span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+            <div class="panel">
+              <h3 class="h-sub">各科平均分</h3>
+              <div class="bchart">
+                {#each d?.examSummary?.subjectAvgs ?? [] as s}
+                  {@const w = (s.avg / maxAvg(d?.examSummary?.subjectAvgs)) * 100}
+                  <div class="brow">
+                    <span class="blabel">{s.subject}{s.n < (d?.examSummary?.n ?? 0) ? ` (${s.n}人)` : ""}</span>
+                    <span class="btrack"><i class="bfill revealed" style="--w:{w}%"></i></span>
+                    <span class="bval">{s.avg}</span>
+                  </div>
+                {/each}
+              </div>
+              <p class="chart-note">各科满分不同，此处为原始平均分；英语 / 俄语为分语种小班。</p>
+            </div>
+          </div>
+        {:else}
+          <p class="score-sub">上学期期末 · 小组平均分排行（班主任维护的期末快照）</p>
+          <div class="rank">
+            {#each d?.ranks ?? [] as r, i (r.id)}
+              <div class="rank-row {clsOf(i)}">
+                <span class="r-medal">{medalOf(i)}</span><span class="r-name">{r.group_name}</span>
+                <div class="r-bar"><i class="fill revealed" style="--w:{pct(r.avg)}%"></i></div>
+                <span class="r-avg">{r.avg.toFixed(2)}</span><span class="r-honor">{r.honor}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
   </div>
 {/if}
 <style>
@@ -1064,5 +1084,27 @@
     .brow { grid-template-columns: 4.6rem 1fr 2.6rem; gap: .4rem; font-size: .74rem; }
     .bchart { gap: .45rem; }
   }
+
+  /* ── 成绩看板：触发按钮 ── */
+  .score-open { display: flex; align-items: center; gap: 1rem; width: 100%; text-align: left; padding: 1.1rem 1.3rem; background: linear-gradient(135deg,#fffdf7,#f3ecdd); border: 1px solid rgba(42,38,32,.12); border-radius: 1rem; cursor: pointer; transition: transform .3s var(--ease-expo), border-color .3s var(--ease-expo), box-shadow .3s var(--ease-expo); }
+  .score-open:hover { transform: translateY(-3px); border-color: #c8542e; box-shadow: 0 18px 36px -24px rgba(42,38,32,.4); }
+  .score-open-ico { font-size: 1.8rem; }
+  .score-open-txt { display: flex; flex-direction: column; gap: .2rem; flex: 1; }
+  .score-open-txt b { font-family: var(--font-heading); font-size: 1.15rem; color: #2a2620; }
+  .score-open-txt i { font-style: normal; font-size: .8rem; color: #8a8178; }
+  .score-open-arr { font-size: 1.4rem; color: #c8542e; }
+
+  /* ── 成绩看板：弹层 ── */
+  .score-lb { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 1.2rem; background: rgba(20,16,10,.62); backdrop-filter: blur(4px); animation: lb-fade .3s ease; }
+  .score-panel { width: min(860px, 94vw); max-height: 88vh; display: flex; flex-direction: column; background: #faf6ee; border-radius: 1.1rem; box-shadow: 0 40px 90px -40px rgba(0,0,0,.6); overflow: hidden; }
+  .score-head { display: flex; align-items: center; gap: 1rem; padding: .9rem 1.1rem; border-bottom: 1px solid rgba(42,38,32,.1); background: #fffdf7; flex-wrap: wrap; }
+  .score-title { font-family: var(--font-heading); font-weight: 700; font-size: 1.05rem; color: #2a2620; }
+  .score-switch { display: flex; gap: 6px; margin-left: auto; }
+  .score-switch button { padding: .4rem .95rem; border-radius: 999px; border: 1px solid rgba(42,38,32,.14); background: transparent; color: #4a443c; font-family: var(--font-heading); font-weight: 600; font-size: .82rem; cursor: pointer; transition: background .2s, color .2s, border-color .2s; }
+  .score-switch button.on { background: #c8542e; color: #fffdf7; border-color: #c8542e; }
+  .score-close { width: 2rem; height: 2rem; border-radius: 50%; border: none; background: #f3ecdd; color: #4a443c; font-size: 1.2rem; line-height: 1; cursor: pointer; }
+  .score-close:hover { background: #e9dfc8; }
+  .score-body { padding: 1.1rem; overflow-y: auto; }
+  .score-sub { margin: 0 0 .9rem; font-size: .82rem; color: #8a8178; }
 
 </style>
