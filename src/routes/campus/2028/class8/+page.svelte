@@ -396,7 +396,7 @@
           {#if g.posterSrc}
             <img src={g.posterSrc} alt={g.name + "手抄报"} loading="lazy" onload={(ev) => ((ev.currentTarget as HTMLElement).style.opacity = "1")} />
           {:else}
-            <div class="g-poster-empty"><span>📰</span><b>手抄报待上传</b><i>在后台「小组」填写后展示</i></div>
+            <div class="g-poster-emblem"><span class="em-ico">{g.emoji}</span><span class="em-name">{g.name}</span><i>小组风采展示区</i></div>
           {/if}
         </div>
         <div class="g-info">
@@ -408,8 +408,10 @@
           <p class="g-goal">🎯 {g.goal || "目标待补充"}</p>
           {#if (g.members ?? []).some((m) => m.role === "组长")}
             <p class="g-leader">组长：{#each g.members ?? [] as m (m.name)}{#if m.role === "组长"}<b class="leader-badge">{m.name}</b>{/if}{/each}</p>
+          {:else if (g.members ?? []).some((m) => m.role === "学科小组长")}
+            <p class="g-leader">学科组长：{#each g.members ?? [] as m (m.name)}{#if m.role === "学科小组长"}<b class="leader-badge">{m.name}</b>{/if}{/each}</p>
           {:else}
-            <p class="g-leader">组长：<i class="g-leader-none">待任命</i></p>
+            <p class="g-leader">组长：<i class="g-leader-none">待定</i></p>
           {/if}
           <div class="chips">
             {#each g.members ?? [] as m (m.name)}
@@ -954,10 +956,10 @@
   .group-card { display: grid; grid-template-columns: 110px 1fr; gap: .9rem; padding: 1rem; background: #fffdf7; border: 1px solid rgba(42,38,32,.1); border-radius: 1rem; }
   .g-poster { border-radius: .7rem; overflow: hidden; background: #f3ecdd; aspect-ratio: 3/4; }
   .g-poster img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity .6s var(--ease-expo); }
-  .g-poster-empty { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .3rem; text-align: center; color: #8a8178; padding: .5rem; }
-  .g-poster-empty span { font-size: 1.4rem; }
-  .g-poster-empty b { font-size: .7rem; color: #4a443c; }
-  .g-poster-empty i { font-style: normal; font-size: .6rem; opacity: .8; }
+  .g-poster-emblem { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .35rem; text-align: center; background: linear-gradient(160deg,#f3ecdd,#e9dfc8); padding: .5rem; }
+  .g-poster-emblem .em-ico { font-size: 2.4rem; line-height: 1; }
+  .g-poster-emblem .em-name { font-family: var(--font-heading); font-weight: 700; font-size: 1rem; color: #4a443c; }
+  .g-poster-emblem i { font-style: normal; font-size: .62rem; color: #8a8178; }
   .g-info { display: flex; flex-direction: column; gap: .45rem; min-width: 0; }
   .g-headline { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
   .g-leader { font-size: .78rem; color: #4a443c; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
