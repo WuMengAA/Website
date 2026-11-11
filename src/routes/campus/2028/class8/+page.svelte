@@ -86,6 +86,20 @@
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   });
+
+  // 【可见性兜底】切到哪个 Tab，就把该 Tab 的所有 reveal 元素强制置为终态。
+  // 目的：不再依赖「滚动进视口才触发 IO」——避免用户/截图看到「标题在、卡片空」的假空壳。
+  // 仍保留错峰入场：每个元素的 --reveal-delay 决定其过渡延迟，视觉上依旧是逐张浮现。
+  $effect(() => {
+    if (!browser) return;
+    void activeTab; // 建立依赖：Tab 变化即重新执行
+    const reveal = () => {
+      document.querySelectorAll("[class*=reveal]").forEach((e) => e.classList.add("revealed"));
+    };
+    const t1 = setTimeout(reveal, 30);
+    const t2 = setTimeout(reveal, 420); // 覆盖 if 块挂载后稍晚出现的元素
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  });
   const rules: string[] = ["入室即静，入座即学", "按时到班，不迟到不早退", "作业独立完成，不抄不拖", "值日尽责，工具归位", "课堂积极思考，勇于发言", "同学互助，不嘲笑不孤立", "手机不进教室，专注学习", "爱护公物，节约水电"];
   const timetable: [string, string][] = [["7:30", "早读"], ["8:00-8:45", "第一节"], ["9:00-9:45", "第二节"], ["10:00-10:45", "第三节"], ["11:00-11:45", "第四节"], ["14:00-14:45", "第五节"], ["15:00-15:45", "第六节"], ["16:00-16:45", "第七节"]];
   const CULT_ICONS: Record<string, string> = { entry: "🚪", south_wall: "🧲", north_wall: "📢", back_wall: "📊", water: "💧", ac: "❄️", hygiene: "🧹" };
