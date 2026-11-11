@@ -40,9 +40,9 @@ export async function seedClass8IfEmpty(): Promise<void> {
   if (n > 0) { _seeded = true; return; }
 
   await db.prepare("UPDATE class8_profile SET class_name=?, slogan=?, concept=?, intro=?, teacher=? WHERE id=1").run(
-    "2028届8班",
-    "励思笃行，八班同行，格物拓疆，聚力争强",
-    "环境育人 · 可视化管理 · 小组自治 · 目标驱动",
+    "尚德班",
+    "励思笃行，八班同行；格物拓疆，聚力争强",
+    "尚德立身，务实向学",
     "高二上学期，我们以小组为单元、以成长看板为镜，把每一天的努力显性化。（当前为测试占位内容）",
     "待填写"
   );
@@ -162,7 +162,7 @@ export async function ensureRealClass8Data(): Promise<void> {
   }
 
   // 档案：真实寄语 / 副标题
-  await db.prepare("UPDATE class8_profile SET class_name='2028届8班', slogan='励思笃行，八班同行，格物拓疆，聚力争强', concept='环境育人 · 小组自治 · 目标驱动 · 可视记录', intro='高二八班，以小组为单元、以成长看板为镜，把每一天的努力显性化。', teacher='待填写', quote='一朵花独绽不是春天，百花齐放才是春色满园。高二八班，不比基础比进步，不比聪明比勤奋！', subtitle='小组风采展' WHERE id=1").run();
+  await db.prepare("UPDATE class8_profile SET class_name='尚德班', slogan='励思笃行，八班同行；格物拓疆，聚力争强', concept='尚德立身，务实向学', intro='高二八班，以小组为单元、以成长看板为镜，把每一天的努力显性化。', teacher='待填写', quote='一朵花独绽不是春天，百花齐放才是春色满园。高二八班，不比基础比进步，不比聪明比勤奋！', subtitle='小组风采展' WHERE id=1").run();
 
   // 学科领航人（幂等：空则灌）
   if ((await db.prepare("SELECT COUNT(*) AS n FROM class8_leaders").get() as { n: number }).n === 0) {
