@@ -15,7 +15,7 @@
     stars: { id: number; month: string; category: string; subject: string; reason: string }[];
     events: { id: number; at: string; title: string; body: string; photos?: { src: string; caption: string }[] }[];
     spots: { id: number; key: string; title: string; slogan: string; body: string }[];
-    examSummary: { title: string; examDate: string; n: number; avgTotal: number; maxTotal: number; minTotal: number; totalBuckets: { label: string; count: number }[]; subjectAvgs: { subject: string; avg: number; max: number; n: number }[]; rankBuckets: { label: string; count: number }[] };
+    examSummary: { title: string; examDate: string; n: number; avgTotal: number; maxTotal: number; minTotal: number; totalBuckets: { label: string; count: number }[]; subjectAvgs: { subject: string; avg: number; max: number; n: number }[] };
   };
   const d = $derived(page.data as D);
   const totalMembers = $derived((d?.groups ?? []).reduce((a, g) => a + (g.members?.length ?? 0), 0));
@@ -354,7 +354,7 @@
 <section id="sec-rules" class="sec">
   <div use:reveal class="reveal sec-head">
     <span class="sec-no">01 · 班级公约</span>
-    <h2 class="h-serif">以约束为前提的自由</h2>
+    <h2 class="h-serif">八条约定，共同遵守</h2>
   </div>
   <div class="rules-grid">
     {#each rules as r, i (r)}
@@ -517,19 +517,6 @@
         {/each}
       </div>
       <p class="chart-note">各科满分不同，此处为原始平均分；英语 / 俄语为分语种小班。</p>
-    </div>
-    <div class="panel">
-      <h3 class="h-sub">班级名次分布</h3>
-      <div class="bchart">
-        {#each d?.examSummary?.rankBuckets ?? [] as b}
-          {@const w = (b.count / (d?.examSummary?.n ?? 1)) * 100}
-          <div class="brow">
-            <span class="blabel">{b.label} 名</span>
-            <span class="btrack"><i class="bfill" use:reveal style="--w:{w}%"></i></span>
-            <span class="bval">{b.count} 人</span>
-          </div>
-        {/each}
-      </div>
     </div>
   </div>
 </section>
