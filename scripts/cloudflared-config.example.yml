@@ -1,0 +1,42 @@
+# ============================================================
+# 用 Cloudflare Tunnel 把本地站点变成公网「网站入口」
+# 适用场景：家庭宽带被 CGNAT 挡住入站（80/443 进不来），
+#           用 cloudflared 出站反连，由 CF 边缘对外暴露标准 80/443。
+# 你已有 tunnel，把下面 ingress 段并入 ~/.cloudflared/config.yml 即可。
+# ============================================================
+
+tunnel: <你的-tunnel-id>
+credentials-file: C:\Users\Administrator\.cloudflared\<你的-tunnel-id>.json
+
+ingress:
+  # 你的网站入口（根域名 + www 都指到本地服务）
+  - hostname: yourdomain.com
+    service: http://localhost:8080
+  - hostname: www.yourdomain.com
+    service: http://localhost:8080
+  # 兜底：其它 host 一律 404
+  - service: http_status:404
+
+# ── 本地服务怎么起 ──────────────────────────────
+# 本地 Web 服务监听 127.0.0.1:8080（仅本机回环即可，cloudflared 走 localhost 连它）。
+# 例：Node/Python/SvelteKit 起服务时 host 绑定 127.0.0.1、端口 8080。
+# 不需要在本机开 80/443，也不需要路由器/防火墙做任何入站放行。
+
+# ── DNS 怎么设 ─────────────────────────────────
+# 域名走 Cloudflare（托管 + 橙色云代理）。首次可用一条命令让 CF 自动建记录：
+#   cloudflared tunnel route dns <tunnel-id> yourdomain.com
+#   cloudflared tunnel route dns <tunnel-id> www.yourdomain.com
+# （由 CF 管 A/AAAA，访客看到的是 CF 任意播 IP，与你本机 IP 无关）
+
+# ── 跑起来 ─────────────────────────────────────
+#   cloudflared tunnel run <你的-tunnel-id>
+# 或装成 Windows 服务开机自启：  cloudflared service install
+
+# ── HTTPS / 证书 ───────────────────────────────
+# CF 边缘免费终止 TLS（橙色云自带证书），本地 8080 用 HTTP 即可，
+# 访客访问 https://yourdomain.com 是加密的。
+
+# ── 关于之前提的「IPv6 直连」（此需求用不到，可忽略）──
+# 那是另一种暴露方式：让访客直接用你本机公网 IPv6 地址访问、不经 CF。
+# 缺点：你家 IPv6 前缀会随重拨变化、且访客自己也得有 IPv6，对建站不如 CF 省心。
+# 所以「要一个网站入口」直接用上面 CF 方案就够了，IPv6 那套不用管。

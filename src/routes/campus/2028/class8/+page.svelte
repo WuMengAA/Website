@@ -2,6 +2,7 @@
   import { reveal } from "$lib/actions/reveal.js";
   import { page } from "$app/state";
   import { tick } from "svelte";
+  import { browser } from "$app/environment";
 
   type D = {
     profile: { class_name: string; slogan: string; concept: string; intro: string; teacher: string; quote: string; subtitle: string };
@@ -64,6 +65,8 @@
   async function setTab(t: TabId, scrollTarget?: string) {
     activeTab = t;
     await tick();
+    // 滚动/锚点定位是纯客户端行为；SSR 期没有 document/window，必须守卫。
+    if (!browser) return;
     if (scrollTarget) {
       const el = document.getElementById(scrollTarget);
       if (el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
@@ -71,7 +74,10 @@
     window.scrollTo({ top: 0, behavior: "auto" });
   }
   // 深链 / 锚点：进入或哈希变化时自动切到对应 Tab 并滚动到锚点
+  // SSR 不执行 effect 体，但 cleanup 可能在服务端 #run_on_destroy 期被调用，
+  // 直接碰 window 会抛 `window is not defined`。用 browser 守卫整体跳过。
   $effect(() => {
+    if (!browser) return;
     const sync = () => {
       const h = decodeURIComponent((location.hash || "").replace(/^#/, ""));
       if (h && SECTION_TAB[h]) setTab(SECTION_TAB[h], h);
@@ -107,6 +113,7 @@
   const prevSlide = () => stepSlide(-1);
   // 键盘：← → 切换，Esc 关闭（$effect 只在客户端、slide 打开时挂监听）
   $effect(() => {
+    if (!browser) return;
     if (!slide) return;
     const h = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight") { e.preventDefault(); nextSlide(); }
