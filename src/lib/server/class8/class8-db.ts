@@ -133,7 +133,14 @@ export async function ensureClass8Schema() {
   // ── 幂等加列（2028-09-29：展板数据字段）──
   async function ensureColumn(table: string, column: string, ddl: string) {
     const cols = await db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-    if (!cols.some((c) => c.name === column)) await db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+    if (cols.some((c) => c.name === column)) return;
+    try {
+      await db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+    } catch (e) {
+      // SQLite schema 缓存竞态：PRAGMA 漏判列已存在时 ALTER 会报 duplicate column。
+      // 列实际上已存在 = 目标达成，忽略即可保持幂等；其它错误照常抛出。
+      if (!String((e as Error)?.message ?? "").includes("duplicate column")) throw e;
+    }
   }
   await ensureColumn("class8_profile", "quote", "quote TEXT NOT NULL DEFAULT ''");
   await ensureColumn("class8_profile", "subtitle", "subtitle TEXT NOT NULL DEFAULT ''");
