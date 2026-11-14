@@ -21,8 +21,9 @@
 	--card-foreground: #1b1b19;
 	--popover: #ffffff;
 	--popover-foreground: #1b1b19;
-	--primary: #a8482b;
-	--primary-foreground: #ffffff;
+	/* 克劳德风格：主色统一珊瑚橙 #cc785c（覆盖原经典主题 #a8482b），亮色档亦克劳德 */
+	--primary: #cc785c;
+	--primary-foreground: #141413;
 	--secondary: #eceae3;
 	--secondary-foreground: #1b1b19;
 	--muted: #f0eee8;
@@ -39,16 +40,16 @@
 	--warning-foreground: #ffffff;
 	--border: oklch(0% 0 0 / 0.14);
 	--input: oklch(0% 0 0 / 0.10);
-	--ring: #a8482b;
+	--ring: #cc785c;
 
 	--sidebar: #f2f1ec;
 	--sidebar-foreground: #1b1b19;
-	--sidebar-primary: #a8482b;
-	--sidebar-primary-foreground: #ffffff;
+	--sidebar-primary: #cc785c;
+	--sidebar-primary-foreground: #141413;
 	--sidebar-accent: #e8e6df;
 	--sidebar-accent-foreground: #1b1b19;
 	--sidebar-border: oklch(0% 0 0 / 0.14);
-	--sidebar-ring: #a8482b;
+	--sidebar-ring: #cc785c;
 
 	/* 语义补充令牌：亮色加黑 alpha（分隔/代码底/斑马纹） */
 	--hairline: oklch(0% 0 0 / 0.10);
@@ -280,7 +281,8 @@
 	--color-sidebar-ring: var(--sidebar-ring);
 
 	--font-sans: 'Saira Variable', 'Noto Sans SC Variable', 'Microsoft YaHei', 'PingFang SC', sans-serif;
-	--font-heading: 'Saira Variable', 'Noto Sans SC Variable', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+	/* 克劳德风格：标题用衬线（Lora → Georgia / 宋体 回退），与正文字体（Saira 无衬线）形成编辑式对比 */
+	--font-heading: 'Lora', Georgia, 'Songti SC', 'Times New Roman', serif;
 	--font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
 	--radius-sm: calc(var(--radius) * 0.6);
