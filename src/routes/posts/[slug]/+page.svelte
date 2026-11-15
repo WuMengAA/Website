@@ -83,7 +83,7 @@
 <ViewTracker target={"posts:" + post.slug} />
 
 <Container>
-	<div class="detail">
+	<div class="detail doc">
 		<p class="ex-crumb ex-field"><a href="/posts">全部文章</a><span>{post.category || "未分类"}</span></p>
 
 		<h1 class="ex-read title">{post.title}</h1>

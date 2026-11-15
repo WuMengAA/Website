@@ -72,7 +72,7 @@
 	{/if}
 
 	<div
-		class="mx-auto w-full py-10 {isFull ? 'max-w-none px-3 md:px-6' : 'px-4 md:px-8'}"
+		class="mx-auto w-full py-10 doc {isFull ? 'max-w-none px-3 md:px-6' : 'px-4 md:px-8'}"
 		style={isFull ? "" : `max-width: ${maxWidth}`}
 	>
 		{#if data.canEdit}
@@ -118,7 +118,7 @@
 				{/if}
 
 				<!-- 双主题下不能再写 prose-invert（那会让亮色模式的正文变成浅字浅底） -->
-				<div class="prose ex-sections ef-drop-cap max-w-none">
+				<div class="prose ex-sections max-w-none">
 					{@html data.html}
 				</div>
 

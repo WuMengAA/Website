@@ -2654,3 +2654,248 @@ a.ex-record:is(:hover, :focus-visible) > * {
        .ex-ticker, .ex-wordmark, .ex-plate, .ex-act, .ex-back, .ex-bars) {
   border-radius: var(--ex-radius);
 }
+
+/* ==========================================================================
+   阅读页 · 克劳德编辑式覆盖（doc 作用域）
+   --------------------------------------------------------------------------
+   仅作用于带 .doc 的阅读页根（posts/[slug]、pages/[slug]）。此处把终末地
+   的 .ex-* 形态（三色条 / 标本式 // eyebrow / ink 粗线页头 / 首字下沉）改写为
+   克劳德编辑式：衬线 Lora 大标题 + 细 hairline + 珊瑚橙强调 + 圆角标签。
+   终末地皮肤（html.theme-endfield）的门控规则特异性更高，切皮时自动还原。
+   ========================================================================== */
+.doc {
+  --doc-rule: var(--ex-rule);
+  --doc-ink: var(--ex-ink);
+  --doc-ink-2: var(--ex-ink-2);
+  --doc-signal: var(--ex-signal);
+}
+/* 页头：衬线大标题 + 细 hairline，去掉终末地 ink 粗线 */
+.doc .ex-sheet-head {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--ex-rule);
+  gap: 0.5rem 1.25rem;
+}
+.doc .ex-sheet-head h1 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--ex-ink);
+}
+.doc .ex-sheet-head p {
+  margin: 0;
+  color: var(--ex-ink-2);
+}
+/* 去掉三色条（终末地签名）；切到 endfield 皮时门控规则会重新显示 */
+.doc .ex-tri { display: none; }
+/* 标本式 eyebrow：去 // 前缀，改克劳德小标签 */
+.doc .ex-eyebrow {
+  font-family: var(--ex-font-ui);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ex-ink-2);
+}
+.doc .ex-eyebrow.slash::before { content: ""; letter-spacing: 0; }
+/* bar-title：克劳德衬线大标题，去掉斜纹 band */
+.doc .ex-bar-title {
+  font-family: var(--font-heading);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 1.5rem;
+  gap: 0;
+}
+.doc .ex-bar-title::after { display: none; }
+/* 面包屑 */
+.doc .ex-crumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5em;
+  margin: 0 0 0.9rem;
+  font-size: var(--ex-t-field);
+  color: var(--ex-ink-2);
+}
+.doc .ex-crumb a {
+  color: var(--ex-ink-2);
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+.doc .ex-crumb a:hover { color: var(--ex-signal); border-bottom-color: var(--ex-signal); }
+.doc .ex-crumb > * + *::before {
+  content: "/";
+  margin-right: 0.5em;
+  color: var(--ex-rule);
+}
+/* meta 事实行：发丝分隔 */
+.doc .ex-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+.doc .ex-facts > * {
+  margin: 0 calc(0.75rem + 1px) 0 calc(-0.75rem - 1px);
+  padding: 0 0.75rem;
+  border-left: 1px solid var(--ex-rule);
+  font-size: var(--ex-t-field);
+  color: var(--ex-ink-2);
+}
+.doc .ex-facts > *:first-child { border-left: 0; padding-left: 0; margin-left: 0; }
+/* 导语 */
+.doc .ex-lede {
+  max-width: var(--ex-measure);
+  margin: 1.25rem 0 0;
+  font-family: var(--ex-font-text);
+  font-size: 1.15rem;
+  line-height: 1.7;
+  color: var(--ex-ink-2);
+}
+/* 正文文本 */
+.doc .ex-read {
+  font-family: var(--ex-font-text);
+  font-weight: 400;
+  line-height: 1.85;
+}
+/* 正文 prose（pages 详情用 .prose.ex-sections） */
+.doc .ex-prose,
+.doc .prose.ex-sections {
+  max-width: var(--ex-measure);
+  font-family: var(--ex-font-text);
+  font-size: var(--ex-t-body);
+  line-height: 1.85;
+  color: var(--ex-ink);
+}
+.doc .ex-prose :is(h2, h3),
+.doc .prose.ex-sections :is(h2, h3) {
+  font-family: var(--font-heading);
+}
+.doc .ex-prose h2,
+.doc .prose.ex-sections h2 {
+  font-size: var(--ex-t-h2);
+  font-weight: 600;
+  margin: 2.4em 0 0.8em;
+  padding-top: 0.9em;
+  border-top: 1px solid var(--ex-rule);
+}
+.doc .ex-prose a,
+.doc .prose.ex-sections a {
+  color: var(--ex-signal);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ex-signal) 45%, transparent);
+  text-underline-offset: 0.2em;
+}
+.doc .ex-prose blockquote,
+.doc .prose.ex-sections blockquote {
+  margin: 1.2em 0;
+  padding-left: 1.2em;
+  border-left: 3px solid var(--ex-signal);
+  color: var(--ex-ink-2);
+}
+.doc .ex-prose code,
+.doc .prose.ex-sections code {
+  font-family: var(--ex-font-mono);
+  font-size: 0.86em;
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--ex-rule);
+  border-radius: 0.3rem;
+  background: var(--ex-paper);
+}
+/* 标签页 chip / tag：圆角卡片，去切角 */
+.doc .ex-chip {
+  border-radius: var(--ex-radius);
+  background: var(--ex-chip);
+  color: var(--ex-ink);
+  font-family: var(--ex-font-ui);
+  font-size: var(--ex-t-field);
+  font-weight: 500;
+  padding: 0.2rem 0.6rem;
+  gap: 0.35em;
+  white-space: nowrap;
+}
+.doc .ex-chip.as-tag {
+  cursor: default;
+  clip-path: none;
+}
+.doc .ex-tag {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--ex-rule);
+  border-radius: var(--ex-radius);
+  padding: 0.12rem 0.55rem;
+  font-family: var(--ex-font-ui);
+  font-size: var(--ex-t-field);
+  font-weight: 500;
+  color: var(--ex-ink);
+  background: transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+.doc a.ex-tag:hover {
+  color: var(--ex-signal);
+  border-color: var(--ex-signal);
+}
+/* 上/下一篇：发丝分隔行 + 悬停珊瑚左条 */
+.doc .ex-records {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--ex-rule);
+}
+.doc .ex-records > li { border-bottom: 1px solid var(--ex-rule); }
+.doc .ex-record,
+.doc a.ex-record {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0 1.1rem;
+  align-items: baseline;
+  padding: 0.9rem 0.7rem;
+  color: var(--ex-ink);
+  transition: background-color 0.15s;
+}
+.doc .ex-record::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--ex-signal);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 0.2s var(--ex-snap);
+}
+.doc a.ex-record:hover { background: color-mix(in srgb, var(--ex-signal) 6%, transparent); }
+.doc a.ex-record:hover::before { transform: none; }
+.doc a.ex-record:hover > * { transform: translateX(4px); transition: transform 0.25s var(--ex-snap); }
+.doc .ex-record .name { font-size: var(--ex-t-body); line-height: 1.5; }
+.doc .ex-record .ex-tag {
+  font-weight: 600;
+  color: var(--ex-ink-2);
+  border-color: transparent;
+}
+.doc a.ex-record:hover .ex-tag { color: var(--ex-signal); }
+/* 分组标题 */
+.doc .ex-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 2.5rem 0 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--ex-rule);
+  font-family: var(--font-heading);
+  font-size: var(--ex-t-h2);
+  font-weight: 600;
+}
+
+/* 文章标题：克劳德衬线大标题（posts 详情 h1.ex-read.title） */
+.doc h1.title {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
