@@ -39,7 +39,7 @@ A_CONTENT = os.path.join(A_ROOT, "content")
 I_CONTENT = os.path.join(I_ROOT, "content")
 
 # 正白名单：只有这些相对路径会被同步。其余一律不动。
-ALLOW_FILES = ["changelog.json", "roadmap.json"]
+ALLOW_FILES = ["changelog.json", "roadmap.json", "timetable.json"]
 ALLOW_DIRS = ["posts", "pages", "docs", "projects", "templates", "archive"]
 
 # 编辑器备份 / 中间物
