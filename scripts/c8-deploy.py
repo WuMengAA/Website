@@ -48,6 +48,21 @@ def sync_trees() -> int:
     return p.returncode
 
 
+def sync_content() -> int:
+    """内容热更新：把 a 树白名单内容（changelog / posts / pages / docs / projects / templates / archive）
+    同步到 ITH。运行态种子（db / users / oauth-clients / project-boards / forum-* 等）一律不碰
+    （由 content-sync.py 的白名单保证）。best-effort：ITH 不可见时返回非 0，但**不阻断**代码部署。"""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "content-sync.py")
+    if not os.path.exists(script):
+        print("[CONTENT] 找不到 content-sync.py，跳过内容热更新")
+        return 0
+    print(f"\n{'=' * 70}\n[CONTENT] 内容热更新 a → ITH\n{'=' * 70}", flush=True)
+    p = subprocess.run([sys.executable, script, "--apply"], text=True, encoding="utf-8", errors="replace")
+    out = (p.stdout or "") + (p.stderr or "")
+    print(out[-3000:], flush=True)
+    return p.returncode
+
+
 def main() -> int:
     if not os.path.exists(ROOT):
         print(f"FATAL: ITH 树不存在: {ROOT}")
@@ -61,6 +76,10 @@ def main() -> int:
         if rc != 0:
             print("\n同步失败 —— 中止，未构建。")
             return rc
+        # 内容热更新（best-effort，不阻断代码上线）
+        rc_c = sync_content()
+        if rc_c != 0:
+            print("\n[CONTENT] 内容热更新未成功（ITH 可能不可见），代码部署继续；下次部署会重试。")
 
     rc = run("BUILD", ["build"])
     if rc != 0:

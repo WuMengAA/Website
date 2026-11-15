@@ -147,3 +147,6 @@ _probe_*.cjs
 
 # parity 验证临时输出（scratch，勿入库；正式脚本在 scripts/pg-*.mjs）
 /_parity/
+
+# 自动部署状态标记（auto-deploy.py 记录上次成功部署的 HEAD，不入库）
+/.deploy-state/
