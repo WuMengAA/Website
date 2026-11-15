@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.1.0",
+    "date": "2026-11-15",
+    "title": "Stelarith v1.1.0 —— 克劳德风重做与双皮系统",
+    "highlight": "默认皮肤切换为克劳德编辑式（衬线标题 + 发丝分隔），终末地主题改为右上角一键切换的 opt-in 第二皮肤；站内状态页、阅读页、首页同步焕新，并经浏览器实测三态一致。",
+    "published": true,
+    "items": [
+      { "kind": "feat", "text": "新增经典皮肤 classic-kit（克劳德编辑式）：单一默认皮肤，去三色条 / 斜杠眉标，改用衬线标题与发丝分隔" },
+      { "kind": "feat", "text": "终末地主题 endfield-kit 改为 opt-in 第二皮肤，全部选择器加 html.theme-endfield 门控，右上角一键切换" },
+      { "kind": "feat", "text": "站内状态页 /status 仿 status.2x.nz 重建并恢复克劳德风格" },
+      { "kind": "feat", "text": "阅读页（posts / pages）深度重做成克劳德编辑式（.doc 作用域覆盖）" },
+      { "kind": "feat", "text": "首页样张区重做成克劳德风，与终末地样张页 /lab/endfield 双皮共存" },
+      { "kind": "change", "text": "主题体系重构为「单一默认皮肤 + 可选第二皮肤」双轨；新增 c8-dualskin-verify.mjs 浏览器三态实测（11/11 PASS）" }
+    ]
+  },
+  {
     "version": "1.0.0",
     "date": "2026-10-23",
     "title": "Stelarith v1.0.0 —— 独立站点元年",
