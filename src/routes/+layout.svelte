@@ -6,6 +6,10 @@
 	// Inter/Lora 已下线（全站 Saira + Noto Sans SC 走 jsDelivr CDN，见 <svelte:head> 的 <link>）
 	import "highlight.js/styles/github.css";
 	import "./layout.css";
+	/* 默认皮肤（克劳德）：为所有 .ex-* 组件提供珊瑚橙 / 圆角 / 衬线标题样式。
+	   终末地皮肤（html.theme-endfield，由 theme-toggle 或 ?skin=endfield 开启）
+	   的门控规则在页面里 import 的 endfield-kit.css，以更高特异性覆盖此处。 */
+	import "./classic-kit.css";
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import { Separator } from "$lib/components/ui/separator/index.js";
 	import { Toaster } from "$lib/components/ui/sonner/index.js";

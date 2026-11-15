@@ -2,6 +2,7 @@
 	// 终末地界面还原样张：把加载指示器 / 双按钮确认框 / 等阶晋升看板集中展示，便于对照截图与验收。
 	// 数值为示例（样张页），真实页面里这些组件由真实数据驱动。
 	import "../../endfield-kit.css";
+	import { onMount, onDestroy } from "svelte";
 	import Seo from "$lib/components/Seo.svelte";
 	import Container from "$lib/components/container.svelte";
 	import Loader from "$lib/components/endfield/loader.svelte";
@@ -10,6 +11,18 @@
 
 	let confirmOpen = $state(false);
 	let lastChoice = $state("");
+
+	// 样张页恒为终末地皮肤：endfield-kit.css 已门控在 html.theme-endfield 下，
+	// 必须在此路由强制开启皮肤类，否则默认（克劳德）下整页 .ex-* 组件会失去终末地样式。
+	// 离开时还原进入前的状态，不污染全局皮肤开关。
+	let restoreSkin: (() => void) | null = null;
+	onMount(() => {
+		const el = document.documentElement;
+		const had = el.classList.contains("theme-endfield");
+		el.classList.add("theme-endfield");
+		restoreSkin = () => { if (!had) el.classList.remove("theme-endfield"); };
+	});
+	onDestroy(() => { if (restoreSkin) restoreSkin(); });
 </script>
 
 <Seo title="界面还原样张" description="终末地风味界面还原：加载、确认、等阶、采购中心。" path="/lab/endfield" />
