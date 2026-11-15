@@ -58,8 +58,8 @@
 	]}
 />
 
-<div class="ex">
-	<!-- 三色条：品红 / 强调色 / 薄荷绿，页顶一次访问画出 -->
+<div class="ex doc">
+	<!-- 三色条：品红 / 强调色 / 薄荷绿，页顶一次访问画出（.doc 克劳德作用域下已隐藏） -->
 	<div class="ex-tri ex-in-sweep" aria-hidden="true"><i></i><i></i><i></i></div>
 
 	<!-- ═══ Hero ═══ -->
@@ -283,6 +283,8 @@
 		padding-left: var(--ex-pad);
 	}
 	.hero .ex-wordmark > * { white-space: nowrap; }
+	/* 克劳德化：页面处于 .doc（克劳德）作用域时，品牌字标改用衬线，弱化终末地硬感 */
+	:global(.doc) .ex-wordmark { font-family: var(--font-heading); font-weight: 600; letter-spacing: -0.02em; }
 	.hero .copy {
 		grid-column: 1;
 		padding: 1.75rem var(--ex-pad) 2.25rem;

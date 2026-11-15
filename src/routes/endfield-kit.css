@@ -819,6 +819,13 @@ html.theme-endfield :is(a, .ex-host):is(:hover, :focus-visible) .ex-hollow-no {
   font-size: 1.15rem;
   font-weight: 800;
 }
+/* 终末地显式强制自有字族：避免 h1/ex-sheet-head/ex-group-head 继承克劳德衬线（Lora），
+   保证 ?skin=endfield 与 /lab/endfield 样张页忠实还原为技术字族。 */
+html.theme-endfield .ex-bar-title,
+html.theme-endfield .ex-sheet-head h1,
+html.theme-endfield .ex-group-head {
+  font-family: var(--ex-font-ui);
+}
 html.theme-endfield .ex-bar-title::after {
 
   content: '';
